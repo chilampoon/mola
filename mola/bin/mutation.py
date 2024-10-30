@@ -1,0 +1,86 @@
+import click
+import os, gzip
+import logging
+from mola.mutation.mapping import read_mismatch_mappings
+from mola.mutation.mismatch_site import *
+
+logging.basicConfig(level=logging.INFO,
+                    format='[%(asctime)s] %(levelname)s - %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S')
+
+@click.group('mut')
+def mola_mut():
+    '''
+    Mutation detection and analysis
+    '''
+    pass
+
+
+@mola_mut.command('map')
+@click.option('-b', '--bam', type=click.Path(exists=True), required=True,
+              help="BAM/SAM file")
+@click.option('--pileup_vcf', type=click.Path(exists=True), required=True,
+              help="VCF output from pileup")
+@click.option('--ref_vcf', type=click.Path(exists=True), required=False, default=None,
+              help="bgzipped VCF file with tabix index, e.g. dbSNP vcf")
+@click.option('-r', '--reads_dir', type=click.Path(exists=True), required=False,
+              help="Directory storing Read objects, output from read annotate")
+@click.option('--stranded', is_flag=True, show_default=True, default=False,
+              help="Reads are from a stranded protocol")
+@click.option('--paired_end', is_flag=True, show_default=True, default=False,
+              help="Reads are from paired-end sequencing")
+@click.option('--min_depth', show_default=True, default=10,
+              help="Minimal pseudobulk depth for a mismatch")
+@click.option('--min_minor_allele', show_default=True, default=1,
+              help="Minimal pseudobulk minor allele count for a mismatch")
+@click.option('--not_startswith_chr', is_flag=True, show_default=True, default=False,
+              help="If specify, all chromosome ids must not start with 'chr'")
+@click.option('-t', '--num_threads', type=int, default=None,
+              help="Number of threads for parallel processing")
+@click.option('--tmp_dir', type=click.Path(exists=True), required=True,
+              help="Tmp directory from read annotation")
+@click.option('-o', '--out_dir', default=os.getcwd(),
+              help="Output directory, default is current working directory")
+def read2mismatch(bam, pileup_vcf, ref_vcf, reads_dir, stranded, paired_end, min_depth,
+                  min_minor_allele, not_startswith_chr, num_threads, out_dir, tmp_dir):
+    '''Mappings between reads and mismatches'''
+    os.makedirs(out_dir, exist_ok=True)
+    startswith_chr = not not_startswith_chr
+    read_mismatch_mappings(
+        bam,
+        pileup_vcf,
+        ref_vcf,
+        stranded,
+        paired_end,
+        min_depth,
+        min_minor_allele,
+        startswith_chr,
+        num_threads,
+        reads_dir,
+        out_dir,
+        tmp_dir
+    )
+
+
+@mola_mut.command('write')
+@click.option('--site_dir', type=click.Path(exists=True), required=True,
+              help="sites directory from mut map outputs")
+@click.option('--stranded', type=click.Path(exists=True), required=True,
+              help="VCF output from pileup")
+@click.option('--stranded', is_flag=True, show_default=True, default=False,
+              help="Output stranded site or not")
+@click.option('--mode', show_default=True, default='bulk', 
+              help="Output mode: bulk, pseudobulk, cell")
+@click.option('--celltype_map', type=click.Path(exists=True), show_default=True, default=None,
+              help="Cell type mapping file, first column is barcode, second is cell type")
+@click.option('-o', '--out_dir', default=os.getcwd(),
+              help="Output directory, default is current working directory")
+def write_site_table(site_dir, stranded, mode, celltype_map, out_dir):
+    '''Write mismatch site table at bulk/pseudobulk/cell level'''
+    output_site_table(
+        site_dir, 
+        stranded, 
+        mode, 
+        out_path, 
+        celltype_map
+    )
