@@ -15,7 +15,7 @@ def output_site_table(site_dir, stranded, mode, out_path, celltype_map):
     modes = ['bulk', 'pseudobulk', 'cell']
     if mode not in modes:
         raise ValueError("Invalid mode. Expected one of: %s" % modes)
-    if mode != 'bulk' and not cell_to_celltype:
+    if mode != 'bulk' and not celltype_map:
         raise ValueError(f"cell_to_celltype mapping required for '{mode}' mode")
 
     # fetch all chrom names
@@ -24,7 +24,7 @@ def output_site_table(site_dir, stranded, mode, out_path, celltype_map):
     chroms = futils.sort_chroms(chroms)
 
     # set up header
-    cell_to_celltype = cell_to_celltype(celltype_map) if celltype_map else None
+    cell2celltype = cell_to_celltype(celltype_map) if celltype_map else None
     header = SITE_HEADERS['stranded_site_table'] if stranded else SITE_HEADERS['unstranded_site_table']
     if mode == 'pseudobulk':
         header = ['celltype'] + header
@@ -33,14 +33,15 @@ def output_site_table(site_dir, stranded, mode, out_path, celltype_map):
     header = '\t'.join(header) + '\n'
 
     with futils.write_text(out_path) as out:
-        out.write(header)
+        out.write(header.encode())
         for chrom in chroms:
+            logging.info(f'Writing {chrom}...')
             obj_path = os.path.join(site_dir, f'{chrom}_sites.pkl.gz')
             with gzip.open(obj_path) as obj:
                 sites = pickle.load(obj)
                 for k,v in sites.items():
-                    row = v.write_table(stranded=stranded, cell_to_celltype=cell_to_celltype, mode=mode)
-                    out.write(row)
+                    row = v.write_table(stranded=stranded, cell_to_celltype=cell2celltype, mode=mode)
+                    out.write(row.encode())
 
 def cell_to_celltype(celltype_map):
     '''

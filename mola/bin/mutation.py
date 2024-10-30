@@ -65,8 +65,6 @@ def read2mismatch(bam, pileup_vcf, ref_vcf, reads_dir, stranded, paired_end, min
 @mola_mut.command('write')
 @click.option('--site_dir', type=click.Path(exists=True), required=True,
               help="sites directory from mut map outputs")
-@click.option('--stranded', type=click.Path(exists=True), required=True,
-              help="VCF output from pileup")
 @click.option('--stranded', is_flag=True, show_default=True, default=False,
               help="Output stranded site or not")
 @click.option('--mode', show_default=True, default='bulk', 
@@ -77,6 +75,8 @@ def read2mismatch(bam, pileup_vcf, ref_vcf, reads_dir, stranded, paired_end, min
               help="Output directory, default is current working directory")
 def write_site_table(site_dir, stranded, mode, celltype_map, out_dir):
     '''Write mismatch site table at bulk/pseudobulk/cell level'''
+    strand_str = 'stranded' if stranded else 'unstranded'
+    out_path = os.path.join(out_dir, f'site_{strand_str}_{mode}.tsv.gz')
     output_site_table(
         site_dir, 
         stranded, 
