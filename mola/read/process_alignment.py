@@ -209,11 +209,6 @@ def process_tag_file(todo, tag_list, save_tags_to, out_dir=None, aln=None):
     elif todo == 'close':
         save_tags_to.close()
 
-READ_HEADERS = {
-    'feature_table': [
-        'barcode', 'umi', 'read_id', 'feature', 'feature_id', 'feature_name'
-    ]
-}
 
 @dataclass
 class Read:
@@ -372,8 +367,9 @@ class Read:
         '''
         generate read to feature info, for outputting read info file and getting cell matrix
         '''
-        feature_id, feature_name = self.get_feature_id_name()
-        items = [self.cb, self.umi, self.id, self.len, self.strand, self.feature, feature_id, feature_name]
+        gene_id, gene_name = self.get_feature_id_name(feature='gene')
+        tx_id, tx_name = self.get_feature_id_name(feature='transcript')
+        items = [self.cb, self.umi, self.id, self.len, self.strand, self.feature, gene_name, gene_id, tx_id]
         return futils.list2line(items)
     
     @classmethod

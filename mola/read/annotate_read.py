@@ -176,8 +176,8 @@ def process_chromosome(chrom, bam_path, bulk, paired_end, primary, min_len, min_
     if write_read_info:
         read_info_path = f'{tmp_dir}/{chrom}.read_info.tsv.gz'
         read_info = futils.write_text(read_info_path)
-        header = ['barcode', 'umi', 'read', 'length', 'strand', 'feature', 'feature_id', 'feature_name']
-        finfo.write(futils.list2line(header).encode())
+        header = ['barcode', 'umi', 'read', 'length', 'strand', 'feature', 'gene_name', 'gene_id', 'tx_id']
+        read_info.write(futils.list2line(header).encode())
         
     # TODO - add exception handling for unmatched chromosomes between BAM & annotations
     bed_out = f'{tmp_dir}/{chrom}.aln.bed'
