@@ -368,12 +368,12 @@ class Read:
                 feature_name = feature_id
         return feature_id, feature_name
 
-    def write_feature_info(self):
+    def write_read_info(self):
         '''
-        generate read to feature info, mostly for getting cell matrix
+        generate read to feature info, for outputting read info file and getting cell matrix
         '''
         feature_id, feature_name = self.get_feature_id_name()
-        items = [self.cb, self.umi, self.id, self.feature, feature_id, feature_name]
+        items = [self.cb, self.umi, self.id, self.len, self.strand, self.feature, feature_id, feature_name]
         return futils.list2line(items)
     
     @classmethod

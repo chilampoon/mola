@@ -30,6 +30,7 @@ def annotate_reads(
         min_repeat_on_read,
         min_intron_on_read,
         min_intron_unspliced,
+        write_read_info,
         num_threads,
         startswith_chr,
         tmp_dir,
@@ -77,6 +78,7 @@ def annotate_reads(
         min_repeat_on_read=min_repeat_on_read,
         min_intron_on_read=min_intron_on_read,
         min_intron_unspliced=min_intron_unspliced,
+        write_read_info=write_read_info,
         alu_merge_dist=alu_merge_dist,
         read_dir=read_dir,
         tmp_dir=tmp_dir,
@@ -161,7 +163,7 @@ def sep_file_by_chrom(chrom_list, tmp_dir, file, suffix):
 
 def process_chromosome(chrom, bam_path, bulk, paired_end, primary, min_len, min_mapq, 
                     read_info, min_overlap, min_exon_on_read, min_repeat_on_read, 
-                    min_intron_on_read, min_intron_unspliced, alu_merge_dist, 
+                    min_intron_on_read, min_intron_unspliced, write_read_info, alu_merge_dist, 
                     read_dir, tmp_dir, process_anno):
     mode = 'bulk' if bulk else 'sc'
     mode = f'{mode}-pe' if paired_end else f'{mode}-se'
@@ -169,6 +171,13 @@ def process_chromosome(chrom, bam_path, bulk, paired_end, primary, min_len, min_
     # process annotation files
     if process_anno:
         write_anno_beds(alu_merge_dist, tmp_dir, chrom)
+    # write read infor file if specified
+    read_info = None
+    if write_read_info:
+        read_info_path = f'{tmp_dir}/{chrom}.read_info.tsv.gz'
+        read_info = futils.write_text(read_info_path)
+        header = ['barcode', 'umi', 'read', 'length', 'strand', 'feature', 'feature_id', 'feature_name']
+        finfo.write(futils.list2line(header).encode())
         
     # TODO - add exception handling for unmatched chromosomes between BAM & annotations
     bed_out = f'{tmp_dir}/{chrom}.aln.bed'
@@ -198,10 +207,13 @@ def process_chromosome(chrom, bam_path, bulk, paired_end, primary, min_len, min_
         min_repeat_on_read, 
         min_intron_on_read,
         min_intron_unspliced,
+        read_info, 
         confident_gene, 
         reads, 
         geneid_to_name
     )
+    if read_info:
+        read_info.close()
     futils.save_gz_pickle(f'{read_dir}/{chrom}_reads.pkl.gz', reads)
     if bulk:
         logging.info(f'[{mode}] {chrom} done! {len(reads)} molecules.')
@@ -321,7 +333,7 @@ def exec_intersect(tmp_dir, chrom):
 
 def classify_reads(rep_int_intersect, exon_intersect, paired_end, 
                     min_overlap, min_exon_on_read, min_repeat_on_read, min_intron_on_read, 
-                    min_intron_unspliced, confident_gene, reads, geneid_to_name):
+                    min_intron_unspliced, read_info, confident_gene, reads, geneid_to_name):
     '''
     - Categories (repeat reads are messy af, three categories are enough for now):
         - gene
@@ -428,6 +440,10 @@ def classify_reads(rep_int_intersect, exon_intersect, paired_end,
         else:
             # check if it is unspliced for all genic reads given that we have intron intersections
             reads[read_id] = check_genic_unspliced(read, intron_bed, min_intron_unspliced)
+        
+        if read_info is not None:
+            this_read_info = reads[read_id].write_read_info()
+            read_info.write(this_read_info.encode())
     return reads
 
 def read_intersect_bed(bed_path):

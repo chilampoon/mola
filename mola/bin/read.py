@@ -105,6 +105,8 @@ def trim(config, bam, max_edit_dist, lib, short):
               help="Minimum intron ratio in the read to call it an intron read")
 @click.option('--min_intron_unspliced', type=float, default=0.1, show_default=True,
               help="Minimum intron ratio in any read exon to call it unspliced")
+@click.option('--write_read_info', is_flag=True, show_default=True, default=False,
+              help="If specify, will also output a read info file")
 @click.option('--alu_merge_dist', type=str, default='500', show_default=True,
               help="Distance for merging alu elements")
 @click.option('--not_startswith_chr', is_flag=True, show_default=True, default=False,
@@ -116,7 +118,7 @@ def trim(config, bam, max_edit_dist, lib, short):
 @pass_config
 def process_and_annotate(config, bam, bulk, paired_end, repeat_bed, gff3, read_assignments,
         min_overlap, min_exon_on_read, min_repeat_on_read, min_intron_on_read, min_intron_unspliced,
-        alu_merge_dist, not_startswith_chr, num_threads, tmp_dir, return_tmp_dir=False
+        write_read_info, alu_merge_dist, not_startswith_chr, num_threads, tmp_dir, return_tmp_dir=False
     ):
     '''Process alignments to Reads and annotate'''
     startswith_chr = not not_startswith_chr
@@ -136,6 +138,7 @@ def process_and_annotate(config, bam, bulk, paired_end, repeat_bed, gff3, read_a
         min_repeat_on_read,
         min_intron_on_read,
         min_intron_unspliced,
+        write_read_info,
         num_threads,
         startswith_chr,
         tmp_dir,
