@@ -17,11 +17,7 @@ def output_site_table(site_dir, stranded, mode, out_path, celltype_map):
         raise ValueError("Invalid mode. Expected one of: %s" % modes)
     if mode != 'bulk' and not celltype_map:
         raise ValueError(f"cell_to_celltype mapping required for '{mode}' mode")
-
-    # fetch all chrom names
-    chrom_files = glob.glob(os.path.join(site_dir, '*_sites.pkl.gz'))
-    chroms = [os.path.basename(f).split('_sites.pkl.gz')[0] for f in chrom_files]
-    chroms = futils.sort_chroms(chroms)
+    chroms = fetch_chrom_ids(site_dir)
 
     # set up header
     cell2celltype = cell_to_celltype(celltype_map) if celltype_map else None
@@ -42,6 +38,47 @@ def output_site_table(site_dir, stranded, mode, out_path, celltype_map):
                 for k,v in sites.items():
                     row = v.write_table(stranded=stranded, cell_to_celltype=cell2celltype, mode=mode)
                     out.write(row.encode())
+
+def output_cell_by_site_matrix(site_dir, out_dir, celltype_map, ref='A', alt='G'):
+    '''Output cell by site matrix
+    NOTE: rn specified ref allele is A alt is G!!
+    '''
+    chroms = fetch_chrom_ids(site_dir)
+    cell2celltype = cell_to_celltype(celltype_map) if celltype_map else None
+    out_path_ref = os.path.join(out_dir, f'cell_by_site_ref.tsv.gz')
+    out_path_alt = os.path.join(out_dir, f'cell_by_site_alt.tsv.gz')
+    
+    with futils.write_text(out_path_ref) as fref, futils.write_text(out_path_alt) as falt:
+        fref.write(futils.list2line(['#SNV'] + [cell for cell in cell2celltype]).encode())
+        falt.write(futils.list2line(['#SNV'] + [cell for cell in cell2celltype]).encode())
+        for chrom in chroms:
+            snv2cell = {}
+            logging.info(f'Counting mismatches in {chrom}...')
+            sites = futils.load_gz_pickle(f'{site_dir}/{chrom}_sites.pkl.gz')
+            for pos, site in sites.items():
+                snv_id = f'{site.chrom}:{site.pos}'
+                snv2cell[snv_id] = defaultdict(lambda: {'ref':0, 'alt':0})
+                if site.strand == '-':
+                    ref, alt = REV_COMP_BASES[ref], REV_COMP_BASES[alt]
+                
+                for cb, read_info in zip(site.cells, site.reads):
+                    cb = re.sub(r'-[0-9]+', '', cb)
+                    read_id, read_strand, allele = read_info.split('|')
+                    if allele == ref:
+                        snv2cell[snv_id][cb]['ref'] += 1
+                    elif allele == alt:
+                        snv2cell[snv_id][cb]['alt'] += 1
+            # write to file
+            for snv_id, cell2cnts in snv2cell.items():
+                fref.write(futils.list2line([snv_id] + [cell2cnts[cell].get('ref', 0) for cell in cell2celltype]).encode())
+                falt.write(futils.list2line([snv_id] + [cell2cnts[cell].get('alt', 0) for cell in cell2celltype]).encode())
+
+def fetch_chrom_ids(site_dir):
+    # fetch all chrom names
+    chrom_files = glob.glob(os.path.join(site_dir, '*_sites.pkl.gz'))
+    chroms = [os.path.basename(f).split('_sites.pkl.gz')[0] for f in chrom_files]
+    chroms = futils.sort_chroms(chroms)
+    return chroms
 
 def cell_to_celltype(celltype_map):
     '''

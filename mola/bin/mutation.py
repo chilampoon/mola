@@ -71,16 +71,25 @@ def read2mismatch(bam, pileup_vcf, ref_vcf, reads_dir, stranded, paired_end, min
               help="Output mode: bulk, pseudobulk, cell")
 @click.option('--celltype_map', type=click.Path(exists=True), show_default=True, default=None,
               help="Cell type mapping file, first column is barcode, second is cell type")
+@click.option('--matrix', is_flag=True, show_default=True, default=False,
+              help="Output cell by site matrix instead of long table")
 @click.option('-o', '--out_dir', default=os.getcwd(),
               help="Output directory, default is current working directory")
-def write_site_table(site_dir, stranded, mode, celltype_map, out_dir):
+def write_site_table(site_dir, stranded, mode, celltype_map, matrix, out_dir):
     '''Write mismatch site table at bulk/pseudobulk/cell level'''
-    strand_str = 'stranded' if stranded else 'unstranded'
-    out_path = os.path.join(out_dir, f'site_{strand_str}_{mode}.tsv.gz')
-    output_site_table(
-        site_dir, 
-        stranded, 
-        mode, 
-        out_path, 
-        celltype_map
-    )
+    if not matrix:
+        strand_str = 'stranded' if stranded else 'unstranded'
+        out_path = os.path.join(out_dir, f'site_{strand_str}_{mode}.tsv.gz')
+        output_site_table(
+            site_dir, 
+            stranded, 
+            mode, 
+            out_path, 
+            celltype_map,
+        )
+    else:
+        output_cell_by_site_matrix(
+            site_dir, 
+            out_dir, 
+            celltype_map,
+        )
