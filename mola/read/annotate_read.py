@@ -248,9 +248,12 @@ def iterate_bam(bam, bulk, primary, min_len, min_mapq, read_info,
                 # some paired end reads don't have paired ids
                 if aln.query_name in reads_chrom:
                     read.id = f'{read.id}/2'
-            elif dup_mole(read, uniq_molecules, max_dist=1):
-                dup_cnt += 1
-                continue
+            else:
+                action = dup_mole(read, uniq_molecules, max_dist=1)
+                if action in ['dump', 'replace']:
+                    dup_cnt += 1
+                    if action == 'dump':
+                        continue
 
             read.feature = '.' # marker for annotated reads
             if not read_info:
@@ -300,17 +303,26 @@ def iterate_bam(bam, bulk, primary, min_len, min_mapq, read_info,
             write_read_bed(read, aln, fout) # get bed file for all (short or long) reads
     return reads_chrom, dup_cnt
 
-def dup_mole(read, uniq_molecules, max_dist):
+def dup_mole(read, uniq_molecules, max_dist, reads_chrom):
     # is_duplicate flag seems useless, dedup here
-    cb, umi, pos = read.cb, read.umi, read.start
+    # also, pick the LONGEST read!
+    action = 'new'
+    cb, umi, pos, read_id, length = read.cb, read.umi, read.start, read.id, read.len
     if (cb, umi) not in uniq_molecules:
-        uniq_molecules[(cb, umi)] = set([pos])
+        uniq_molecules[(cb, umi)] = {pos:read_id}
     else:
-        all_pos = uniq_molecules[(cb, umi)]
+        all_pos = list(uniq_molecules[(cb, umi)].keys())
         for pos in all_pos:
             if pos in range(pos-max_dist, pos+max_dist+1):
-                return True
-    return False
+                old_len = reads_chrom[uniq_molecules[(cb, umi)][pos]].len
+                if length > old_len:
+                    del reads_chrom[uniq_molecules[(cb, umi)][pos]]
+                    uniq_molecules[(cb, umi)][pos] = read_id
+                    action = 'replace'
+                else:
+                    action = 'dump'
+                break
+    return action
 
 def write_read_bed(read, aln, fout):
     other_info = [read.len, read.id, read.gene.get('id', '.'), read.gene.get('tx', '.')]
