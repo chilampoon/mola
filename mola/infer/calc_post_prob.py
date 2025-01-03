@@ -154,7 +154,7 @@ class ProbCalculator:
         all_substitutions = mm_cnt['mismatch'].unique()
         thetas = defaultdict(dict)
         for mm in sorted(all_substitutions):
-            logging.info(mm)
+            logging.info(f'{mm} non SNP mismatches:')
             mask = (mm_cnt['mismatch'] == mm) & (mm_cnt['snp_type']=='none')
             mm_df = mm_cnt[mask]
             mm_data = mm_df.loc[:,['minor_cnt','total']].to_numpy()
@@ -263,14 +263,14 @@ class ProbCalculator:
         err_betas = self.error_thetas[compl_pair]['betas']
         ## get a plot
         overlaid_betabinom_dist(
-            obs=compl_nonsnp['minor_af'], 
+            obs=compl_nonsnp['minor_af'],
             alphas=err_alphas,
             betas=err_betas,
             weights=err_weights,
             xlim=self.plot_xlim, 
             ylim=self.plot_ylim,
             n=round(compl_nonsnp.shape[0], -2),
-            save_to=os.path.join(plot_out_dir, f'{compl_pair}.mixed_betabinom.pdf')
+            save_to=os.path.join(plot_out_dir, f'{compl_pair.replace(">", "_to_")}.mixed_betabinom.pdf')
         )
 
         ## usually it's the max one from non-snps, unless it's not.
@@ -313,7 +313,7 @@ class ProbCalculator:
             xlim=self.plot_xlim, 
             ylim=self.plot_ylim, 
             n=round(edit_nonsnp.shape[0], -2), 
-            save_to=os.path.join(plot_out_dir, f'{mismatch_pair}.edit_mixture.pdf')
+            save_to=os.path.join(plot_out_dir, f'{mismatch_pair.replace(">", "_to_")}.edit_mixture.pdf')
         )
         theta_dict = dict((i,j) for i,j in zip(['weights', 'alphas', 'betas'], [edit_weights, edit_alphas, edit_betas]))
         return theta_dict
@@ -371,7 +371,7 @@ class ProbCalculator:
             xlim=self.plot_xlim, 
             ylim=self.plot_ylim,
             n=round(common_cnt.shape[0], -2), 
-            save_to=os.path.join(plot_out_dir, f'{mismatch_pair}.germline_mixture.pdf')
+            save_to=os.path.join(plot_out_dir, f'{mismatch_pair.replace(">", "_to_")}.germline_mixture.pdf')
         )
         return dict((i,j) for i,j in zip(['weights','alphas','betas'], (weights, alphas, betas)))
 
@@ -465,7 +465,7 @@ class ProbCalculator:
                 ylim=self.plot_ylim,
                 n=round(sub_rare_cnt.shape[0], -2),
                 inf_dist_labels=['germline dist', 'error dist'],
-                save_to=os.path.join(rare_plot_dir, f'{mismatch_pair}.rare_mixture.pdf')
+                save_to=os.path.join(rare_plot_dir, f'{mismatch_pair.replace(">", "_to_")}.rare_mixture.pdf')
             )
 
         # reestimate weights for germline + error + edit
@@ -512,7 +512,7 @@ class ProbCalculator:
                 ylim=self.plot_ylim,
                 n=round(sub_rare_cnt.shape[0], -2),
                 inf_dist_labels=plot_labels,
-                save_to=os.path.join(rare_plot_dir, f'{mismatch_pair}.rare_mixture.pdf')
+                save_to=os.path.join(rare_plot_dir, f'{mismatch_pair.replace(">", "_to_")}.rare_mixture.pdf')
             )
         return rare_weights
 
