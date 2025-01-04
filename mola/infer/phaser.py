@@ -171,7 +171,7 @@ class Phaser:
             locus_cnt += 1
             if locus_cnt % 100 == 0:
                 logging.info(f'{locus_cnt} loci done')
-        self.phasing_log.write(f'* {self.chrom}: #single snp loci={single_ctr}; #multi snps loci={multi_ctr}\n\n')
+        self.phasing_log.write(f'* {self.chrom}: #single snp loci={single_ctr}; #multi snps loci={multi_ctr}\n')
         return reads
 
     def process_one_snp(self, gene, locus, site_obj, reads):

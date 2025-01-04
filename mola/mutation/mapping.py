@@ -11,7 +11,7 @@ from mola.parse.parse_bed import site_anno_script
 # illumina: 2 or 1?
 
 
-def read_mismatch_mappings(
+def map_read_mismatch(
         bam_path,
         pileup_vcf_path,
         ref_vcf_path,
