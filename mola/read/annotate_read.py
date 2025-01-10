@@ -249,7 +249,7 @@ def iterate_bam(bam, bulk, primary, min_len, min_mapq, read_info,
                 if aln.query_name in reads_chrom:
                     read.id = f'{read.id}/2'
             else:
-                action = dup_mole(read, uniq_molecules, max_dist=1)
+                action, reads_chrom = dup_mole(read, uniq_molecules, max_dist=1, reads_chrom=reads_chrom)
                 if action in ['dump', 'replace']:
                     dup_cnt += 1
                     if action == 'dump':
@@ -322,7 +322,7 @@ def dup_mole(read, uniq_molecules, max_dist, reads_chrom):
                 else:
                     action = 'dump'
                 break
-    return action
+    return action, reads_chrom
 
 def write_read_bed(read, aln, fout):
     other_info = [read.len, read.id, read.gene.get('id', '.'), read.gene.get('tx', '.')]
