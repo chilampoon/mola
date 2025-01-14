@@ -250,18 +250,18 @@ def iterate_bam(bam, bulk, primary, min_len, min_mapq, read_info,
             read = aln2Read(aln, primary, min_len, min_mapq)
             if not read:
                 continue
-
+            
             if bulk:
                 # some paired end reads don't have paired ids
                 if aln.query_name in reads_chrom:
                     read.id = f'{read.id}/2'
             else:
-                action, reads_chrom = dup_mole(read, uniq_molecules, max_dist=1, reads_chrom=reads_chrom)
+                action = dup_mole(read, uniq_molecules, reads_chrom, max_dist=1)
                 if action in ['dump', 'replace']:
                     dup_cnt += 1
                     if action == 'dump':
                         continue
-
+            
             read.feature = '.' # marker for annotated reads
             if not read_info:
                 # short reads don't have confident gene assignments to reads
@@ -297,6 +297,8 @@ def iterate_bam(bam, bulk, primary, min_len, min_mapq, read_info,
                 gene_chrom, strand, gene_id, tx_id = rinfo['c'], rinfo['s'], rinfo['g'], rinfo['t']
                 if gene_chrom != read.chr:
                     logging.debug(f'{read.id} from {read.chr} but was assigned to {gene_chrom}')
+                    if read.start in uniq_molecules[(read.cb, read.umi)].keys():
+                        del uniq_molecules[(read.cb, read.umi)][read.start]
                     continue
                 
                 gname, gstrand = geneid_to_name[gene_id].split('|')
@@ -310,7 +312,7 @@ def iterate_bam(bam, bulk, primary, min_len, min_mapq, read_info,
             write_read_bed(read, aln, fout) # get bed file for all (short or long) reads
     return reads_chrom, dup_cnt
 
-def dup_mole(read, uniq_molecules, max_dist, reads_chrom):
+def dup_mole(read, uniq_molecules, reads_chrom, max_dist):
     # is_duplicate flag seems useless, dedup here
     # also, pick the LONGEST read!
     action = 'new'
@@ -319,17 +321,18 @@ def dup_mole(read, uniq_molecules, max_dist, reads_chrom):
         uniq_molecules[(cb, umi)] = {pos:read_id}
     else:
         all_pos = list(uniq_molecules[(cb, umi)].keys())
-        for pos in all_pos:
-            if pos in range(pos-max_dist, pos+max_dist+1):
-                old_len = reads_chrom[uniq_molecules[(cb, umi)][pos]].len
+        for p in all_pos:
+            if pos in range(p-max_dist, p+max_dist+1):
+                old_len = reads_chrom[uniq_molecules[(cb, umi)][p]].len
                 if length > old_len:
-                    del reads_chrom[uniq_molecules[(cb, umi)][pos]]
+                    del reads_chrom[uniq_molecules[(cb, umi)][p]]
+                    del uniq_molecules[(cb, umi)][p]
                     uniq_molecules[(cb, umi)][pos] = read_id
                     action = 'replace'
                 else:
                     action = 'dump'
                 break
-    return action, reads_chrom
+    return action
 
 def write_read_bed(read, aln, fout):
     other_info = [read.len, read.id, read.gene.get('id', '.'), read.gene.get('tx', '.')]
