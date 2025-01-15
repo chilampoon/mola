@@ -89,7 +89,10 @@ def annotate_reads(
             glob.glob(f'{tmp_dir}/*.read_info.tsv.gz'),
             key=futils.sort_chrom_files
         )
-        read_info_text_out = f'{read_dir}/read_info.tsv.gz'
+
+        table_dir = f'{out_dir}/tables'
+        os.makedirs(table_dir, exist_ok=True)
+        read_info_text_out = f'{table_dir}/read_info.tsv.gz'
         futils.concat_files(read_info_files, read_info_text_out)
     return tmp_dir
 
@@ -256,6 +259,12 @@ def iterate_bam(bam, bulk, primary, min_len, min_mapq, read_info,
                 if aln.query_name in reads_chrom:
                     read.id = f'{read.id}/2'
             else:
+                if read_info is not None and read.id in read_info:
+                    # filter out reads mapped to different chromosomes from gene annotation & genome
+                    rinfo = read_info[read.id]
+                    if rinfo['c'] != read.chr:
+                        logging.debug(f'{read.id} from {read.chr} but was assigned to {rinfo["c"]}')
+                        continue
                 action = dup_mole(read, uniq_molecules, reads_chrom, max_dist=1)
                 if action in ['dump', 'replace']:
                     dup_cnt += 1
@@ -295,12 +304,6 @@ def iterate_bam(bam, bulk, primary, min_len, min_mapq, read_info,
                 # long reads have confident gene assignments to reads
                 rinfo = read_info[read.id]
                 gene_chrom, strand, gene_id, tx_id = rinfo['c'], rinfo['s'], rinfo['g'], rinfo['t']
-                if gene_chrom != read.chr:
-                    logging.debug(f'{read.id} from {read.chr} but was assigned to {gene_chrom}')
-                    if read.start in uniq_molecules[(read.cb, read.umi)].keys():
-                        del uniq_molecules[(read.cb, read.umi)][read.start]
-                    continue
-                
                 gname, gstrand = geneid_to_name[gene_id].split('|')
                 read.feature = 'gene'
                 read.strand = strand if strand != '.' else gstrand # splice site strand > annotation strand
@@ -313,25 +316,22 @@ def iterate_bam(bam, bulk, primary, min_len, min_mapq, read_info,
     return reads_chrom, dup_cnt
 
 def dup_mole(read, uniq_molecules, reads_chrom, max_dist):
-    # is_duplicate flag seems useless, dedup here
-    # also, pick the LONGEST read!
+    # is_duplicate flag seems useless, dedup here. Also, pick the LONGEST read!
     action = 'new'
     cb, umi, pos, read_id, length = read.cb, read.umi, read.start, read.id, read.len
     if (cb, umi) not in uniq_molecules:
         uniq_molecules[(cb, umi)] = {pos:read_id}
     else:
-        all_pos = list(uniq_molecules[(cb, umi)].keys())
-        for p in all_pos:
-            if pos in range(p-max_dist, p+max_dist+1):
-                old_len = reads_chrom[uniq_molecules[(cb, umi)][p]].len
-                if length > old_len:
-                    del reads_chrom[uniq_molecules[(cb, umi)][p]]
-                    del uniq_molecules[(cb, umi)][p]
-                    uniq_molecules[(cb, umi)][pos] = read_id
-                    action = 'replace'
-                else:
-                    action = 'dump'
-                break
+        # NOTE: what if reads are paired end? this needs to record positions - TBD
+        # right now it's for single end reads still keeping the positions 
+        pos_old = list(uniq_molecules[(cb, umi)].keys())[0]
+        len_old = reads_chrom[uniq_molecules[(cb, umi)][pos_old]].len
+        if length > len_old:
+            del reads_chrom[uniq_molecules[(cb, umi)][pos_old]]
+            uniq_molecules[(cb, umi)] = {pos: read_id}
+            action = 'replace'
+        else:
+            action = 'dump'
     return action
 
 def write_read_bed(read, aln, fout):
