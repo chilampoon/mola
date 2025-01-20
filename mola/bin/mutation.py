@@ -3,7 +3,7 @@ import os, gzip
 import logging
 from mola.mutation.mapping import map_read_mismatch
 from mola.mutation.mismatch_site import *
-from mola.mutation.somatic import soma_test
+from mola.infer.somatic_test import soma_test
 
 logging.basicConfig(level=logging.INFO,
                     format='[%(asctime)s] %(levelname)s - %(message)s',
