@@ -73,7 +73,8 @@ def classify_mut(hap_mut_rates, error_rate):
         return 'error'
 
 def process_chromosome(chrom, reads, sites, haplo, posterior, 
-                    n_haplos, prop_mut, seq_error_rate, out_dir):
+                    n_haplos, prop_mut, seq_error_rate, learning_rate, 
+                    num_steps, out_dir):
     # get all non-error sites
     logging.info(f'chromosome {chrom}...')
     
@@ -149,7 +150,7 @@ def process_chromosome(chrom, reads, sites, haplo, posterior,
                 data, n_haplos=n_haplos,
                 model=snv_model, 
                 prop_mut=prop_mut, error_rate=seq_error_rate,
-                random_seed=21, lr=0.05, n_steps=250
+                random_seed=21, lr=learning_rate, n_steps=num_steps
             )
             mut_cat = classify_mut(hap_mut_rates, error_rate)
 
@@ -185,7 +186,7 @@ def process_chromosome(chrom, reads, sites, haplo, posterior,
     return soma_test_res, pd.DataFrame(stats)
 
 def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, n_haplos, 
-            prop_mut, seq_error_rate, out_dir):
+            prop_mut, seq_error_rate, learning_rate, num_steps, out_dir):
     logging.info(f'testing somatic mutations...')
     # load inputs
     haplo = pd.read_csv(haplo_path, dtype={1: str}, sep='\t')
@@ -196,13 +197,16 @@ def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, n_haplos,
     tmp_dir = futils.make_tmp_dir(out_dir)
     
     #sites_test = posterior[posterior['category'] != 'error']
-    sites_test[['chrom', 'pos']] = [m.split('|')[0].split(':') for m in sites_test['snv']]
-    sites_test = sites_test[sites_test['chrom'].isin(haplo['chr'].values)]
+    posterior[['chrom', 'pos']] = [m.split('|')[0].split(':') for m in posterior['snv']]
+    sites_test = posterior[posterior['chrom'].isin(haplo['chr'].values)]
     
     soma_test_res = []
     stats_res = []
     sites_grouped = sites_test.groupby('chrom')
+    # TODO - parallelize
     for chrom, posteriors_chrom in sites_grouped:
+        if chrom != 'chr17':
+            continue
         reads_obj_path = os.path.join(reads_dir, f'{chrom}_reads.pkl.gz')
         reads = futils.load_gz_pickle(reads_obj_path)
         sites_obj_path = os.path.join(sites_dir, f'{chrom}_sites.pkl.gz')
@@ -210,7 +214,7 @@ def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, n_haplos,
         
         haplo_chrom = haplo[haplo['chr'] == chrom]
         res, stats = process_chromosome(chrom, reads, sites, haplo_chrom, posteriors_chrom, 
-                    n_haplos, prop_mut, seq_error_rate, out_dir)
+                    n_haplos, prop_mut, seq_error_rate, learning_rate, num_steps, out_dir)
         soma_test_res.append(res)
         stats_res.append(stats)
         

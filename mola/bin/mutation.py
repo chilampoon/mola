@@ -3,7 +3,6 @@ import os, gzip
 import logging
 from mola.mutation.mapping import map_read_mismatch
 from mola.mutation.mismatch_site import *
-from mola.infer.somatic_test import soma_test
 
 logging.basicConfig(level=logging.INFO,
                     format='[%(asctime)s] %(levelname)s - %(message)s',
@@ -94,21 +93,3 @@ def write_site_table(site_dir, stranded, mode, celltype_map, matrix, out_dir):
             out_dir, 
             celltype_map,
         )
-
-
-@mola_mut.command('soma')
-@click.option('-d', '--obj_dir', required=True, type=click.Path(exists=True),
-              help="Object directory, output from read annotate")
-@click.option('--haplo', required=True, type=click.Path(exists=True),
-              help="Path to haplo.tsv, output from infer phayes")
-@click.option('--post_probs', required=True, type=click.Path(exists=True),
-              help="Path to site dataframe with posterior probabilities, output from infer posteriors")
-@click.option('-o', '--out_dir', default=os.getcwd(), 
-              help="Output directory, default is current working directory")
-def run_somatic_test(obj_dir, haplo, post_probs, out_dir):
-    '''SNV differential allele test'''
-    out_dir = os.path.join(out_dir, 'somatic_test')
-    os.makedirs(out_dir, exist_ok=True)
-    reads_dir = os.path.join(obj_dir, 'reads')
-    sites_dir = os.path.join(obj_dir, 'sites')
-    soma_test(reads_dir, sites_dir, haplo, post_probs, out_dir)
