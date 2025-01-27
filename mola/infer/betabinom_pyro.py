@@ -11,7 +11,7 @@ from pyro.optim import ClippedAdam
 from pyro.infer.autoguide.guides import AutoDelta
 
 
-################### n-component mixture model ###################
+################### n-component mixture model (2023) ###################
 @config_enumerate
 def betabinom_mixture_model(data, 
         n_components, 
