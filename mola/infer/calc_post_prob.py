@@ -700,27 +700,25 @@ class ProbCalculator:
                     params = ",".join(["%.3f" % p for p in theta])
                     f.write(f'  - {mm}: {params}\n')
 
+        # write json output
+        error_thetas = defaultdict(dict)
+        for mm,theta in self.error_thetas.items():
+            for k,v in theta.items():
+                if k in ['obs', 'n']: continue
+                if type(v) is np.ndarray:
+                    error_thetas[mm][k] = v.tolist()
+        
+        combined_data = {
+            'error_params': error_thetas,
+            'germline_params': self._dictnp2list(self.germline_thetas),
+            'edit_params': self._dictnp2list(self.edit_thetas)
+        }
+        if self.has_rare_snps:
+            combined_data['rare_weights'] = self._dictnp2list(self.rare_weights)
+            
         json_out = re.sub(r'\.txt$', '.json', fout)
         with open(json_out, 'w') as j:
-            j.write('error_params = \n')
-            error_thetas = defaultdict(dict)
-            for mm,theta in self.error_thetas.items():
-                for k,v in theta.items():
-                    if k in ['obs', 'n']: continue
-                    if type(v) is np.ndarray:
-                        error_thetas[mm][k] = v.tolist()
-            json.dump(error_thetas, j, indent = 2)
-            j.write('\n\ngermline_params = \n')
-            germline_thetas = self._dictnp2list(self.germline_thetas)
-            json.dump(germline_thetas, j, indent = 2)
-            j.write('\n\nedit_params = \n')
-            edit_thetas = self._dictnp2list(self.edit_thetas)
-            json.dump(edit_thetas, j, indent = 2)
-            if self.has_rare_snps:
-                j.write('\n\nrare_weights = \n')
-                rare_weights = self._dictnp2list(self.rare_weights)
-                json.dump(rare_weights, j, indent = 2)
-            j.write('\n')
+            json.dump(combined_data, j, indent=2)
 
     def _dictnp2list(self, param_dict):
         new_dict = param_dict
