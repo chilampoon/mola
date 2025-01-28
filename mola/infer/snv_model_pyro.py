@@ -11,7 +11,7 @@ from pyro.optim import ClippedAdam
 # Jan 2025
 
 @config_enumerate
-def snv_diploid_model(data, prop_mut=0.2, error_rate=0.03):
+def snv_diploid_model(data, error_prior):
     '''
     A diploid SNV model for somatic mutation detection
     n_haplotypes = 2
@@ -24,7 +24,7 @@ def snv_diploid_model(data, prop_mut=0.2, error_rate=0.03):
     # mutation status -- somatic mutation or error
     z_mut_prior = pyro.sample(
         'z_mut_prior',
-        dist.Dirichlet(1e-2 * torch.tensor([1.0, 1.0]))
+        dist.Dirichlet(1e4 * torch.tensor([0.9, 0.1])) # apply a strong prior
     )
     z_mut = pyro.sample(
         'z_mut',
@@ -34,7 +34,7 @@ def snv_diploid_model(data, prop_mut=0.2, error_rate=0.03):
     # which one is mutable haplotype
     z_hap_prior = pyro.sample(
         'z_hap_prior',
-        dist.Dirichlet(1e-1 * torch.tensor([1.0, 1.0]))
+        dist.Dirichlet(torch.tensor([1.0, 1.0]))
     )
     z_hap = pyro.sample(
         'z_hap',
@@ -44,23 +44,23 @@ def snv_diploid_model(data, prop_mut=0.2, error_rate=0.03):
     # which one is mutable base
     z_base_prior = pyro.sample(
         'z_base_prior',
-        dist.Dirichlet(1e-1 * torch.tensor([1.0, 1.0]))
+        dist.Dirichlet(torch.tensor([1.0, 1.0]))
     )
     z_base = pyro.sample(
         'z_base',
         dist.Categorical(z_base_prior)
     )
     
-    # mutant cell proportion
+    # ~= mutant cell proportion
     p_mut = pyro.sample(
         'p_mut',
-        dist.Beta(prop_mut*10, 10)
+        dist.Beta(1, 1)
     )
     
     # error rate
     p_err = pyro.sample(
         'p_err',
-        dist.Beta(error_rate*10, 10)
+        dist.Beta(error_prior[0], error_prior[1])
     )
     
     with pyro.plate('read', n_reads, dim=-1):
@@ -80,10 +80,8 @@ def snv_diploid_model(data, prop_mut=0.2, error_rate=0.03):
 #pyro.render_model(snv_diploid_model, model_args=(data, 2), render_distributions=True, render_params=True)
 
 def somatic_test_svi(data, 
-        n_haplos,
-        model=snv_diploid_model, 
-        prop_mut=0.2,
-        error_rate=0.03,
+        model, 
+        error_prior,
         random_seed=21, 
         lr=0.05, 
         n_steps=250
@@ -100,8 +98,7 @@ def somatic_test_svi(data,
 
     
         for step in range(n_steps):
-            loss = svi.step(data, n_haplos=n_haplos, 
-                            prop_mut=prop_mut, error_rate=error_rate)
+            loss = svi.step(data, error_prior)
             
             if np.isnan(loss):
                 break
@@ -111,7 +108,6 @@ def somatic_test_svi(data,
         else:
             # in case returns nan
             n_steps -= 50
-
 
     p_mut = pyro.param("AutoDelta.p_mut").detach().numpy()
     p_err = pyro.param("AutoDelta.p_err").detach().numpy()

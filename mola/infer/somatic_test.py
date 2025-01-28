@@ -2,6 +2,7 @@ from mola.parse.file_utils import *
 from scipy.stats import chi2_contingency, fisher_exact, false_discovery_control
 import matplotlib.pyplot as plt
 from mola.infer.snv_model_pyro import *
+import json
 import warnings
 warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
 
@@ -9,7 +10,7 @@ futils = FileUtils()
 MIN_TEST_COUNT = 10
 
 """
-Test for somatic mutations post phasing (Aug 2024)
+Test for somatic mutations post phasing (Aug 2024, updated in 2025)
 
 Input:
   - Reads
@@ -23,6 +24,23 @@ Output:
   - Plots
 """
 
+def digest_betabinom_params(bb_params):
+    '''
+    beta binomial params estimated from the mixture model.
+    serve as error prior for the SNV model here
+    '''
+    with open(bb_params) as f:
+        params = json.load(f)
+    
+    error_params = {}
+    for category, values in params['error_params'].items():
+        weights = values['weights']
+        alphas = values['alphas']
+        betas = values['betas']
+        # pick those with the highest weight
+        max_index = weights.index(max(weights))
+        error_params[category] = (alphas[max_index], betas[max_index])
+    return error_params
 
 def simple_stats(cnt_df):
     # minor haplotype
@@ -49,12 +67,13 @@ def check_table_cnts(cnt_df):
         a2  0   |  100
     so pass them
     '''
-    coverage_thres = 10
-    minor_thres = 2
+    coverage_thres = 20
+    minor_thres = 5
     # compute column sums
     col_sums = cnt_df.sum(axis=0)
+    row_minor = cnt_df.min(axis=1)
     # check if any column sum is less than 10
-    enough_coverage = False if (col_sums < coverage_thres).any() else True
+    enough_coverage = False if (col_sums < coverage_thres).any() and (row_minor < minor_thres).all() else True
     
     # check if the diagonal elements of the df are all zeros
     is_germline = ((cnt_df.iloc[0, 0] != 0 and cnt_df.iloc[1, 1] != 0) and \
@@ -64,17 +83,8 @@ def check_table_cnts(cnt_df):
     test_it = True if enough_coverage and not is_germline else False
     return test_it
 
-def classify_mut(hap_mut_rates, error_rate):
-    hap_mut_rates = hap_mut_rates - error_rate
-    delta = hap_mut_rates.max() - hap_mut_rates.min()
-    if hap_mut_rates.min() < 0.05 and delta > 0.1:
-        return 'somatic'
-    else:
-        return 'error'
-
-def process_chromosome(chrom, reads, sites, haplo, posterior, 
-                    n_haplos, prop_mut, seq_error_rate, learning_rate, 
-                    num_steps, out_dir):
+def process_chromosome(chrom, reads, sites, haplo, posterior, bb_params,
+                    n_haplos, learning_rate, num_steps, out_dir):
     # get all non-error sites
     logging.info(f'chromosome {chrom}...')
     
@@ -102,6 +112,7 @@ def process_chromosome(chrom, reads, sites, haplo, posterior,
             continue
         
         site_obj = sites[(chrom, s)]
+        error_params = bb_params[site_obj.mismatch]
         a1, a2 = site_obj.mismatch.split('>')
         
         # get alleles counts on each haplotype
@@ -115,15 +126,13 @@ def process_chromosome(chrom, reads, sites, haplo, posterior,
             
             for locus, hap_id in read_obj.hap.items():
                 loc_hap = f'{locus}_{hap_id}'
-            ## old version ##
-            # for loc_hap in read_obj.hap:
-            #     locus = loc_hap.replace('_1', '').replace('_2', '').replace('_.', '')
+                
                 if base in [a1, a2]:
                     site_hap_cnts[locus][loc_hap][base] += 1
-                
-                base_num = 0 if base == a1 else 1 if base == a2 else 2
-                hap_num = 0 if hap_id == '1' else 1 if hap_id == '2' else 2
-                reads_with_site[locus].append([base_num, hap_num])
+                    # NOTE - not modeling other bases for now
+                    base_num = 0 if base == a1 else 1 if base == a2 else 2
+                    hap_num = 0 if hap_id == '1' else 1 if hap_id == '2' else 2
+                    reads_with_site[locus].append([base_num, hap_num])
                 
         if not site_hap_cnts:
             continue
@@ -146,15 +155,13 @@ def process_chromosome(chrom, reads, sites, haplo, posterior,
             
             # run somatic test
             data = torch.tensor(reads_with_site[locus])
-            hap_mut_rates, hap_ratio, error_rate = somatic_test_svi(
-                data, n_haplos=n_haplos,
-                model=snv_model, 
-                prop_mut=prop_mut, error_rate=seq_error_rate,
+            p_mut, p_err, z_mut_prior, z_hap_prior, z_base_prior = somatic_test_svi(
+                data, model=snv_diploid_model, 
+                error_prior=error_params,
                 random_seed=21, lr=learning_rate, n_steps=num_steps
             )
-            mut_cat = classify_mut(hap_mut_rates, error_rate)
-
-                
+            # TODO - parse results
+            
             # collect simple stats
             maf, major_allele_maf, major_allele_sum, minor_hap_maf, minor_hap_sum = simple_stats(cnt_df)
             stats.append([chrom, row['snv'], locus, row['gene'], maf, 
@@ -171,10 +178,10 @@ def process_chromosome(chrom, reads, sites, haplo, posterior,
                 locus_flag = haplo.loc[haplo['locus'] == locus.replace('loc', ''), 'locus_flag'].values[0]
             
             res_row = [row['snv'], row['gene'], cnt_total, locus, locus_flag, 
-                        row['region'], row['snp_type'], row['category_prob'], 
-                        ','.join(['%.3f' % r for r in hap_mut_rates]),
-                        ','.join(['%.3f' % r for r in hap_ratio]), error_rate, mut_cat]
-            #print(res_row)
+                        row['region'], row['snp_type'], row['category'], 
+                        p_mut, p_err, z_mut_prior, z_hap_prior, z_base_prior]
+            print(cnt_df)
+            print(res_row)
             soma_test_res.append(res_row)
             
     hap_cnt_out = os.path.join(out_dir, f'{chrom}_hap_cnt.tsv')
@@ -185,8 +192,8 @@ def process_chromosome(chrom, reads, sites, haplo, posterior,
     soma_test_res = pd.DataFrame(soma_test_res)
     return soma_test_res, pd.DataFrame(stats)
 
-def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, n_haplos, 
-            prop_mut, seq_error_rate, learning_rate, num_steps, out_dir):
+def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, bb_params_path,
+            n_haplos, learning_rate, num_steps, out_dir):
     logging.info(f'testing somatic mutations...')
     # load inputs
     haplo = pd.read_csv(haplo_path, dtype={1: str}, sep='\t')
@@ -195,6 +202,8 @@ def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, n_haplos,
     hap_cnt_out = os.path.join(out_dir, 'hap_cnt.tsv')
     soma_test_out = os.path.join(out_dir, 'soma_test.tsv')
     tmp_dir = futils.make_tmp_dir(out_dir)
+    
+    bb_params = digest_betabinom_params(bb_params_path)
     
     #sites_test = posterior[posterior['category'] != 'error']
     posterior[['chrom', 'pos']] = [m.split('|')[0].split(':') for m in posterior['snv']]
@@ -214,7 +223,7 @@ def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, n_haplos,
         
         haplo_chrom = haplo[haplo['chr'] == chrom]
         res, stats = process_chromosome(chrom, reads, sites, haplo_chrom, posteriors_chrom, 
-                    n_haplos, prop_mut, seq_error_rate, learning_rate, num_steps, out_dir)
+                    bb_params, n_haplos, learning_rate, num_steps, out_dir)
         soma_test_res.append(res)
         stats_res.append(stats)
         
@@ -235,8 +244,7 @@ def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, n_haplos,
     
     soma_test_res = pd.concat(soma_test_res).reset_index(drop=True)
     soma_test_res.columns = ['snv', 'gene', 'coverage', 'locus', 'locus_flag', 'region', 
-                            'snp_type', 'category_prob', 'hap_mut_rates', 'hap_ratio', 
-                            'error_rate', 'category_mut']
+                            'snp_type', 'category', 'p_mut', 'p_err', 'z_mut_prior', 'z_hap_prior', 'z_base_prior']
     soma_test_res.fillna('.').to_csv(soma_test_out, sep='\t', index=False)
 
     shutil.rmtree(tmp_dir)

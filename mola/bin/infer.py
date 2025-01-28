@@ -115,24 +115,22 @@ def phayes(**args):
               help="Path to haplo.tsv, output from infer phayes")
 @click.option('--post_probs', required=True, type=click.Path(exists=True),
               help="Path to site dataframe with posterior probabilities, output from infer posteriors")
+@click.option('--bb_params', required=True, type=click.Path(exists=True),
+              help='Path to betabinom_params.json, output from infer posteriors')
 @click.option('--n_haplos', required=True, type=int, default=2, show_default=True,
               help="Number of haplotypes")
-@click.option('--prop_mut', required=True, type=float, default=0.2, show_default=True,
-              help="Proportion of mutatant cells")
-@click.option('--seq_error_rate', required=True, type=float, default=0.01, show_default=True,
-              help="Sequencing error rate: ONT 0.01-0.03, PacBio & Illumina 0.001")
 @click.option('--learning_rate', type=float, default=0.05, show_default=True,
               help="Learning rate in SVI")
 @click.option('--num_steps', type=int, default=250, show_default=True,
               help="Number of steps in variational inference")
 @click.option('-o', '--out_dir', default=os.getcwd(), 
               help="Output directory, default is current working directory")
-def run_somatic_test(obj_dir, haplo, post_probs, n_haplos, prop_mut, 
-                    seq_error_rate, learning_rate, num_steps, out_dir):
+def run_somatic_test(obj_dir, haplo, post_probs, bb_params, n_haplos, 
+                    learning_rate, num_steps, out_dir):
     '''Test for somatic mutations'''
     out_dir = os.path.join(out_dir, 'somatic_test')
     os.makedirs(out_dir, exist_ok=True)
     reads_dir = os.path.join(obj_dir, 'reads')
     sites_dir = os.path.join(obj_dir, 'sites')
-    soma_test(reads_dir, sites_dir, haplo, post_probs, n_haplos, 
-            prop_mut, seq_error_rate, learning_rate, num_steps, out_dir)
+    soma_test(reads_dir, sites_dir, haplo, post_probs, bb_params, n_haplos, 
+            learning_rate, num_steps, out_dir)
