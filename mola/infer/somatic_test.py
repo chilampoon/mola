@@ -1,6 +1,4 @@
 from mola.parse.file_utils import *
-from scipy.stats import chi2_contingency, fisher_exact, false_discovery_control
-import matplotlib.pyplot as plt
 from mola.infer.snv_model_pyro import *
 import json
 import warnings
@@ -8,6 +6,7 @@ warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
 
 futils = FileUtils()
 MIN_TEST_COUNT = 10
+EDITS = ['A>G', 'G>A', 'T>C', 'C>T']
 
 """
 Test for somatic mutations post phasing (Aug 2024, updated in 2025)
@@ -24,70 +23,10 @@ Output:
   - Plots
 """
 
-def digest_betabinom_params(bb_params):
-    '''
-    beta binomial params estimated from the mixture model.
-    serve as error prior for the SNV model here
-    '''
-    with open(bb_params) as f:
-        params = json.load(f)
-    
-    error_params = {}
-    for category, values in params['error_params'].items():
-        weights = values['weights']
-        alphas = values['alphas']
-        betas = values['betas']
-        # pick those with the highest weight
-        max_index = weights.index(max(weights))
-        error_params[category] = (alphas[max_index], betas[max_index])
-    return error_params
-
-def simple_stats(cnt_df):
-    # minor haplotype
-    minor_hap = cnt_df.sum(axis=0).idxmin()
-    minor_hap_sum = cnt_df[minor_hap].sum()
-    minor_hap_maf = cnt_df[minor_hap].min() / minor_hap_sum
-    
-    # minor allele
-    minor_allele = cnt_df.sum(axis=1).idxmin()
-    maf = cnt_df.loc[minor_allele,:].sum() / cnt_df.sum().sum()
-    
-    # major allele
-    major_allele = cnt_df.sum(axis=1).idxmax()
-    major_allele_sum = cnt_df.loc[major_allele,:].sum()
-    major_allele_maf = cnt_df.loc[major_allele,:].min() / major_allele_sum
-    
-    return maf, major_allele_maf, major_allele_sum, minor_hap_maf, minor_hap_sum
-
-def check_table_cnts(cnt_df):
-    '''
-    if it's germline variant, counts would be like
-            h1  |  h2
-        a1  100 |  0
-        a2  0   |  100
-    so pass them
-    '''
-    coverage_thres = 20
-    minor_thres = 5
-    # compute column sums
-    col_sums = cnt_df.sum(axis=0)
-    row_minor = cnt_df.min(axis=1)
-    # check if any column sum is less than 10
-    enough_coverage = False if (col_sums < coverage_thres).any() and (row_minor < minor_thres).all() else True
-    
-    # check if the diagonal elements of the df are all zeros
-    is_germline = ((cnt_df.iloc[0, 0] != 0 and cnt_df.iloc[1, 1] != 0) and \
-                    (cnt_df.iloc[0, 1] < minor_thres and cnt_df.iloc[1, 0] < minor_thres)) or \
-                ((cnt_df.iloc[0, 0] < minor_thres and cnt_df.iloc[1, 1] < minor_thres) and \
-                    (cnt_df.iloc[0, 1] != 0 and cnt_df.iloc[1, 0] != 0))
-    test_it = True if enough_coverage and not is_germline else False
-    return test_it
-
-def process_chromosome(chrom, reads, sites, haplo, posterior, bb_params,
+def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_params,
                     n_haplos, learning_rate, num_steps, out_dir):
     # get all non-error sites
     logging.info(f'chromosome {chrom}...')
-    
     hap_cnt = []
     soma_test_res = []
     stats = []
@@ -112,8 +51,19 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, bb_params,
             continue
         
         site_obj = sites[(chrom, s)]
-        error_params = bb_params[site_obj.mismatch]
         a1, a2 = site_obj.mismatch.split('>')
+        # process prior info
+        error_params, edit_prior = bb_params['error'], bb_params['edit']
+        error_prior = error_params[site_obj.mismatch]
+        if site_obj.mismatch not in EDITS:
+            # edit_error_ratio = 1e-5
+            edit_prior = [1, 1]
+            event_probs = [(1-mut_prop), mut_prop]
+        else:
+            # edit_error_ratio = get_edit_error_ratio(posterior)
+            event_probs = [(1-mut_prop)/2, mut_prop, (1-mut_prop)/2]
+        # edit_prop = edit_error_ratio * (1-mut_prop)
+        # event_probs = [1 - mut_prop - edit_prop, mut_prop, edit_prop]
         
         # get alleles counts on each haplotype
         site_hap_cnts = defaultdict(lambda: defaultdict(lambda:{a1:0, a2:0}))
@@ -144,6 +94,7 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, bb_params,
                 continue
             
             cnt_df = pd.DataFrame(haplo_cnts)
+            cnt_df = cnt_df.reindex(sorted(cnt_df.columns), axis=1)
             cnt_total = sum(cnt_df.sum())
             if cnt_df.shape[1] > 2:
                 cnt_df = cnt_df.iloc[:, :2]
@@ -155,12 +106,14 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, bb_params,
             
             # run somatic test
             data = torch.tensor(reads_with_site[locus])
-            p_mut, p_err, z_mut_prior, z_hap_prior, z_base_prior = somatic_test_svi(
+            params = somatic_test_svi(
                 data, model=snv_diploid_model, 
-                error_prior=error_params,
+                event_probs=event_probs,
+                error_prior=error_prior,
+                edit_prior=edit_prior,
                 random_seed=21, lr=learning_rate, n_steps=num_steps
             )
-            # TODO - parse results
+            p_mut, p_err, p_edit, pi_event, z_hap_prior, z_base_prior = parse_svi_out(params)
             
             # collect simple stats
             maf, major_allele_maf, major_allele_sum, minor_hap_maf, minor_hap_sum = simple_stats(cnt_df)
@@ -179,7 +132,7 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, bb_params,
             
             res_row = [row['snv'], row['gene'], cnt_total, locus, locus_flag, 
                         row['region'], row['snp_type'], row['category'], 
-                        p_mut, p_err, z_mut_prior, z_hap_prior, z_base_prior]
+                        p_mut, p_err, p_edit, pi_event, z_hap_prior, z_base_prior]
             print(cnt_df)
             print(res_row)
             soma_test_res.append(res_row)
@@ -192,8 +145,117 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, bb_params,
     soma_test_res = pd.DataFrame(soma_test_res)
     return soma_test_res, pd.DataFrame(stats)
 
+def get_edit_error_ratio(posterior):
+    '''
+    for edit categories, calculate the ratio of error to edit from previous estimations
+    '''
+    edits = posterior[posterior['mismatch'].isin(EDITS)]
+    cnts = edits['category'].value_counts()
+    edit_error_ratio = cnts['edit'] / (cnts['error'] + cnts['edit'])
+    return float(edit_error_ratio)
+
+def digest_betabinom_params(bb_params):
+    '''
+    beta binomial params estimated from the mixture model.
+    serve as error prior for the SNV model here
+    '''
+    with open(bb_params) as f:
+        params = json.load(f)
+    
+    error_params = {}
+    for category, values in params['error_params'].items():
+        weights = values['weights']
+        alphas = values['alphas']
+        betas = values['betas']
+        # pick those with the highest weight
+        max_index = weights.index(max(weights))
+        error_params[category] = (alphas[max_index], betas[max_index])
+    
+    # for edit, pick the one with the highest mean regardless of categories
+    edit_params = {}
+    max_mean = 0
+    for category, values in params['edit_params'].items():
+        weights = values['weights']
+        alphas = values['alphas']
+        betas = values['betas']
+        
+        candidates = [
+            (a, b, a / (a + b))  # store alpha, beta, and pre-computed mean
+            for w, a, b in zip(weights, alphas, betas)
+            if w >= 0.01
+        ]
+        if candidates:
+            a, b, highest_mean = max(candidates, key=lambda x: x[2])
+        
+        if highest_mean > max_mean:
+            max_mean = highest_mean
+            best_alpha, best_beta = a, b
+    
+    if max_mean == 0:
+        best_alpha, best_beta = 2, 10
+    edit_params = (best_alpha, best_beta)
+    
+    print('error_params:', error_params)
+    print('edit_params:', edit_params)
+    return {'error': error_params, 'edit':edit_params}
+
+def simple_stats(cnt_df):
+    # minor haplotype
+    minor_hap = cnt_df.sum(axis=0).idxmin()
+    minor_hap_sum = cnt_df[minor_hap].sum()
+    minor_hap_maf = cnt_df[minor_hap].min() / minor_hap_sum
+    
+    # minor allele
+    minor_allele = cnt_df.sum(axis=1).idxmin()
+    maf = cnt_df.loc[minor_allele,:].sum() / cnt_df.sum().sum()
+    
+    # major allele
+    major_allele = cnt_df.sum(axis=1).idxmax()
+    major_allele_sum = cnt_df.loc[major_allele,:].sum()
+    major_allele_maf = cnt_df.loc[major_allele,:].min() / major_allele_sum
+    
+    return maf, major_allele_maf, major_allele_sum, minor_hap_maf, minor_hap_sum
+
+def check_table_cnts(cnt_df):
+    '''
+    if it's germline variant, counts would be like
+            h1  |  h2
+        a1  100 |  0
+        a2  0   |  100
+    so pass them
+    '''
+    coverage_thres_sum = 20
+    coverage_thres_minor = 5
+    minor_thres = 0.03 # 3% of the minor allele
+    # compute column sums
+    col_sums = cnt_df.sum(axis=0)
+    row_sums = cnt_df.sum(axis=1)
+    row_minor = cnt_df.loc[row_sums.idxmin()]
+    # check if any column sum is less than 10
+    good_coverage = False if (col_sums < coverage_thres_sum).any() or (row_minor < coverage_thres_minor).all() else True
+    
+    # check if the diagonal elements of the df are all zeros
+    row_mins = cnt_df.min(axis=1)
+    min_indices = cnt_df.idxmin(axis=1)
+    min_arr = np.array([max(i, coverage_thres_minor) for i in col_sums * minor_thres])
+    is_germline = (row_mins < min_arr).all() and min_indices.nunique() > 1
+    test_it = True if good_coverage and not is_germline else False
+    return test_it
+
+def parse_svi_out(params):
+    p_mut, p_err, p_edit_h0, p_edit_h1, pi_event, z_hap_prior, z_base_prior = params
+    p_mut = p_mut.item()
+    p_err = p_err.item()
+    p_edit_h2 = p_edit_h1.item()
+    p_edit_h1 = p_edit_h0.item()
+    p_edit = f'{p_edit_h1:.3f}:{p_edit_h2:.3f}' if len(pi_event) == 3 else '.'
+    pi_event = ':'.join(map(lambda x:"%.3f" % x, pi_event))
+    z_hap_prior = ':'.join(map(lambda x:"%.3f" % x, z_hap_prior))
+    z_base_prior = ':'.join(map(lambda x:"%.3f" % x, z_base_prior))
+    return p_mut, p_err, p_edit, pi_event, z_hap_prior, z_base_prior
+
 def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, bb_params_path,
-            n_haplos, learning_rate, num_steps, out_dir):
+            mut_prop, n_haplos, learning_rate, num_steps, out_dir):
     logging.info(f'testing somatic mutations...')
     # load inputs
     haplo = pd.read_csv(haplo_path, dtype={1: str}, sep='\t')
@@ -212,10 +274,8 @@ def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, bb_params_path,
     soma_test_res = []
     stats_res = []
     sites_grouped = sites_test.groupby('chrom')
-    # TODO - parallelize
+    
     for chrom, posteriors_chrom in sites_grouped:
-        if chrom != 'chr17':
-            continue
         reads_obj_path = os.path.join(reads_dir, f'{chrom}_reads.pkl.gz')
         reads = futils.load_gz_pickle(reads_obj_path)
         sites_obj_path = os.path.join(sites_dir, f'{chrom}_sites.pkl.gz')
@@ -223,7 +283,7 @@ def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, bb_params_path,
         
         haplo_chrom = haplo[haplo['chr'] == chrom]
         res, stats = process_chromosome(chrom, reads, sites, haplo_chrom, posteriors_chrom, 
-                    bb_params, n_haplos, learning_rate, num_steps, out_dir)
+                    mut_prop, bb_params, n_haplos, learning_rate, num_steps, out_dir)
         soma_test_res.append(res)
         stats_res.append(stats)
         
@@ -243,8 +303,8 @@ def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, bb_params_path,
     stats_res.to_csv(f"{out_dir}/stats.tsv", sep='\t', index=False)
     
     soma_test_res = pd.concat(soma_test_res).reset_index(drop=True)
-    soma_test_res.columns = ['snv', 'gene', 'coverage', 'locus', 'locus_flag', 'region', 
-                            'snp_type', 'category', 'p_mut', 'p_err', 'z_mut_prior', 'z_hap_prior', 'z_base_prior']
+    soma_test_res.columns = ['snv', 'gene', 'coverage', 'locus', 'locus_flag', 'region', 'snp_type', 
+                            'category', 'p_mut', 'p_err', 'p_edit', 'event_prior', 'z_hap_prior', 'z_base_prior']
     soma_test_res.fillna('.').to_csv(soma_test_out, sep='\t', index=False)
 
     shutil.rmtree(tmp_dir)

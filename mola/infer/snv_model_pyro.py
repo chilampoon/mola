@@ -11,7 +11,7 @@ from pyro.optim import ClippedAdam
 # Jan 2025
 
 @config_enumerate
-def snv_diploid_model(data, error_prior):
+def snv_diploid_model(data, error_prior, edit_prior, event_probs):
     '''
     A diploid SNV model for somatic mutation detection
     n_haplotypes = 2
@@ -21,17 +21,17 @@ def snv_diploid_model(data, error_prior):
     bases = data[:, 0]
     haps = data[:, 1]
     
-    # mutation status -- somatic mutation or error
-    z_mut_prior = pyro.sample(
-        'z_mut_prior',
-        dist.Dirichlet(1e4 * torch.tensor([0.9, 0.1])) # apply a strong prior
+    # events - [error, somatic, editing], mostly are errors
+    pi_event = pyro.sample(
+        'pi_event', 
+        dist.Dirichlet(torch.tensor(event_probs))
     )
-    z_mut = pyro.sample(
-        'z_mut',
-        dist.Categorical(z_mut_prior)
+    z_event = pyro.sample(
+        "z_event", 
+        dist.Categorical(pi_event)
     )
     
-    # which one is mutable haplotype
+    # somatic - which one is mutable haplotype
     z_hap_prior = pyro.sample(
         'z_hap_prior',
         dist.Dirichlet(torch.tensor([1.0, 1.0]))
@@ -51,54 +51,84 @@ def snv_diploid_model(data, error_prior):
         dist.Categorical(z_base_prior)
     )
     
-    # ~= mutant cell proportion
+    # error rate
+    p_err = pyro.sample(
+        'p_err',
+        dist.Beta(*error_prior)
+    )
+    
+    # editing prior - allow editing frequencies different on two haplotypes
+    p_edit_h0 = pyro.sample(
+        'p_edit_h0',
+        #dist.Beta(*edit_prior)
+        dist.Beta(1, 1)
+    )
+    
+    p_edit_h1 = pyro.sample(
+        'p_edit_h1',
+        #dist.Beta(*edit_prior)
+        dist.Beta(1, 1)
+    )
+    
+    # somatic - ~= mutant cell proportion
     p_mut = pyro.sample(
         'p_mut',
         dist.Beta(1, 1)
     )
     
-    # error rate
-    p_err = pyro.sample(
-        'p_err',
-        dist.Beta(error_prior[0], error_prior[1])
-    )
-    
     with pyro.plate('read', n_reads, dim=-1):
         hap_match = (haps == z_hap).float()
-        p_mutant = z_mut * hap_match * p_mut
+        z_base = z_base.float()
         
-        z_base_float = z_base.float()
-        prob_true_ALT = p_mutant * z_base_float + (1.0 - p_mutant) * (1.0 - z_base_float)
+        # compute mutant probability based on category
+        p_edit_haps = torch.where(haps==0, p_edit_h0, p_edit_h1)
+        p_mismatch = torch.where(
+            z_event == 1,  # somatic mutation: on one haplotype
+            hap_match * p_mut,
+            torch.where(
+                z_event == 2,
+                p_edit_haps, # RNA editing,
+                0 # error
+            )
+        )
         
-        prob_obs_alt = prob_true_ALT * (1.0 - p_err) + (1.0 - prob_true_ALT) * p_err
+        prob_true_ALT = p_mismatch * z_base + (1 - p_mismatch) * (1 - z_base)
+        prob_obs_alt = prob_true_ALT * (1 - p_err) + (1 - prob_true_ALT) * p_err
     
         pyro.sample(
             "obs_bases", 
             dist.Bernoulli(prob_obs_alt), 
             obs=bases.float()
         )
-#pyro.render_model(snv_diploid_model, model_args=(data, 2), render_distributions=True, render_params=True)
+#pyro.render_model(snv_diploid_model, model_args=(data, [10, 500]), render_distributions=True, render_params=True)
 
 def somatic_test_svi(data, 
-        model, 
+        model,
+        event_probs,
         error_prior,
+        edit_prior,
         random_seed=21, 
         lr=0.05, 
         n_steps=250
     ):
     pyro.set_rng_seed(int(random_seed))
-
+    
     while True:
         pyro.clear_param_store()
         optim = ClippedAdam({"lr": lr, 
                             'betas': [0.8, 0.99]})
-        guide = AutoDelta(poutine.block(model, expose=['p_mut', 'p_err', 'z_mut_prior', 'z_hap_prior', 'z_base_prior']))
+        guide = AutoDelta(poutine.block(model, expose=['p_mut', 'p_err', 'p_edit_h0', 'p_edit_h1',
+                                                    'pi_event', 'z_hap_prior', 'z_base_prior']))
         elbo = JitTraceEnum_ELBO(max_plate_nesting=2)
         svi = SVI(model, guide, optim, elbo)
 
-    
         for step in range(n_steps):
-            loss = svi.step(data, error_prior)
+            loss = svi.step(
+                data,
+                error_prior=error_prior,
+                edit_prior=edit_prior,
+                event_probs=event_probs
+            )
             
             if np.isnan(loss):
                 break
@@ -111,7 +141,10 @@ def somatic_test_svi(data,
 
     p_mut = pyro.param("AutoDelta.p_mut").detach().numpy()
     p_err = pyro.param("AutoDelta.p_err").detach().numpy()
-    z_mut_prior = pyro.param("AutoDelta.z_mut_prior").detach().numpy()
+    p_edit_h0 = pyro.param("AutoDelta.p_edit_h0").detach().numpy()
+    p_edit_h1 = pyro.param("AutoDelta.p_edit_h1").detach().numpy()
+    pi_event = pyro.param("AutoDelta.pi_event").detach().numpy()
     z_hap_prior = pyro.param("AutoDelta.z_hap_prior").detach().numpy()
     z_base_prior = pyro.param("AutoDelta.z_base_prior").detach().numpy()
-    return p_mut, p_err, z_mut_prior, z_hap_prior, z_base_prior
+    
+    return p_mut, p_err, p_edit_h0, p_edit_h1, pi_event, z_hap_prior, z_base_prior

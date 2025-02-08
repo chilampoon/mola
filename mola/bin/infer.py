@@ -117,20 +117,22 @@ def phayes(**args):
               help="Path to site dataframe with posterior probabilities, output from infer posteriors")
 @click.option('--bb_params', required=True, type=click.Path(exists=True),
               help='Path to betabinom_params.json, output from infer posteriors')
+@click.option('--mut_prop', required=True, type=float, default=0.1, show_default=True,
+              help="Proportion of somatic mutations, ranging from 0 to 1")
 @click.option('--n_haplos', required=True, type=int, default=2, show_default=True,
               help="Number of haplotypes")
 @click.option('--learning_rate', type=float, default=0.05, show_default=True,
               help="Learning rate in SVI")
-@click.option('--num_steps', type=int, default=250, show_default=True,
+@click.option('--num_steps', type=int, default=300, show_default=True,
               help="Number of steps in variational inference")
 @click.option('-o', '--out_dir', default=os.getcwd(), 
               help="Output directory, default is current working directory")
-def run_somatic_test(obj_dir, haplo, post_probs, bb_params, n_haplos, 
+def run_somatic_test(obj_dir, haplo, post_probs, bb_params, mut_prop, n_haplos, 
                     learning_rate, num_steps, out_dir):
     '''Test for somatic mutations'''
     out_dir = os.path.join(out_dir, 'somatic_test')
     os.makedirs(out_dir, exist_ok=True)
     reads_dir = os.path.join(obj_dir, 'reads')
     sites_dir = os.path.join(obj_dir, 'sites')
-    soma_test(reads_dir, sites_dir, haplo, post_probs, bb_params, n_haplos, 
-            learning_rate, num_steps, out_dir)
+    soma_test(reads_dir, sites_dir, haplo, post_probs, bb_params, mut_prop, 
+            n_haplos, learning_rate, num_steps, out_dir)
