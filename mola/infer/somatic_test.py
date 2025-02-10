@@ -90,7 +90,6 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
         # test for somatic mutations
         for locus, haplo_cnts in site_hap_cnts.items():
             if locus.replace('loc', '') in hap_avoid_loci:
-                print(f'skipping {locus}...')
                 continue
             
             cnt_df = pd.DataFrame(haplo_cnts)
@@ -113,7 +112,7 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
                 edit_prior=edit_prior,
                 random_seed=21, lr=learning_rate, n_steps=num_steps
             )
-            p_mut, p_err, p_edit, pi_event, z_hap_prior, z_base_prior = parse_svi_out(params)
+            prediction, soma_prob, τ_e, τ_h, τ_b, μ_mut, μ_edit, ε = parse_svi_out(params)
             
             # collect simple stats
             maf, major_allele_maf, major_allele_sum, minor_hap_maf, minor_hap_sum = simple_stats(cnt_df)
@@ -132,9 +131,7 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
             
             res_row = [row['snv'], row['gene'], cnt_total, locus, locus_flag, 
                         row['region'], row['snp_type'], row['category'], 
-                        p_mut, p_err, p_edit, pi_event, z_hap_prior, z_base_prior]
-            print(cnt_df)
-            print(res_row)
+                        prediction, soma_prob, τ_e, τ_h, τ_b, μ_mut, μ_edit, ε]
             soma_test_res.append(res_row)
             
     hap_cnt_out = os.path.join(out_dir, f'{chrom}_hap_cnt.tsv')
@@ -194,9 +191,6 @@ def digest_betabinom_params(bb_params):
     if max_mean == 0:
         best_alpha, best_beta = 2, 10
     edit_params = (best_alpha, best_beta)
-    
-    print('error_params:', error_params)
-    print('edit_params:', edit_params)
     return {'error': error_params, 'edit':edit_params}
 
 def simple_stats(cnt_df):
@@ -243,16 +237,20 @@ def check_table_cnts(cnt_df):
     return test_it
 
 def parse_svi_out(params):
-    p_mut, p_err, p_edit_h0, p_edit_h1, pi_event, z_hap_prior, z_base_prior = params
-    p_mut = p_mut.item()
-    p_err = p_err.item()
-    p_edit_h2 = p_edit_h1.item()
-    p_edit_h1 = p_edit_h0.item()
-    p_edit = f'{p_edit_h1:.3f}:{p_edit_h2:.3f}' if len(pi_event) == 3 else '.'
-    pi_event = ':'.join(map(lambda x:"%.3f" % x, pi_event))
-    z_hap_prior = ':'.join(map(lambda x:"%.3f" % x, z_hap_prior))
-    z_base_prior = ':'.join(map(lambda x:"%.3f" % x, z_base_prior))
-    return p_mut, p_err, p_edit, pi_event, z_hap_prior, z_base_prior
+    preds = ['error', 'somatic', 'edit']
+    τ_e, τ_h, τ_b, ε, μ_edit_h0, μ_edit_h1, μ_mut = params
+    
+    prediction = preds[np.argmax(τ_e).item()]
+    soma_prob = τ_e[1].item()
+    τ_e = ':'.join(map(lambda x:"%.3f" % x, τ_e))
+    τ_h = ':'.join(map(lambda x:"%.3f" % x, τ_h))
+    τ_b = ':'.join(map(lambda x:"%.3f" % x, τ_b))
+    ε = ε.item()
+    μ_edit_h0 = μ_edit_h0.item()
+    μ_edit_h1 = μ_edit_h1.item()
+    μ_edit = f'{μ_edit_h0:.3f}:{μ_edit_h1:.3f}'
+    μ_mut = μ_mut.item()
+    return prediction, soma_prob, τ_e, τ_h, τ_b, μ_mut, μ_edit, ε
 
 def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, bb_params_path,
             mut_prop, n_haplos, learning_rate, num_steps, out_dir):
@@ -283,7 +281,7 @@ def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, bb_params_path,
         
         haplo_chrom = haplo[haplo['chr'] == chrom]
         res, stats = process_chromosome(chrom, reads, sites, haplo_chrom, posteriors_chrom, 
-                    mut_prop, bb_params, n_haplos, learning_rate, num_steps, out_dir)
+                    mut_prop, bb_params, n_haplos, learning_rate, num_steps, tmp_dir)
         soma_test_res.append(res)
         stats_res.append(stats)
         
@@ -304,7 +302,8 @@ def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, bb_params_path,
     
     soma_test_res = pd.concat(soma_test_res).reset_index(drop=True)
     soma_test_res.columns = ['snv', 'gene', 'coverage', 'locus', 'locus_flag', 'region', 'snp_type', 
-                            'category', 'p_mut', 'p_err', 'p_edit', 'event_prior', 'z_hap_prior', 'z_base_prior']
+                            'category', 'prediction', 'soma_prob', 'event_probs', 'hap_preference', 
+                            'base_preference', 'mut_frq', 'edit_frqs', 'error_frq']
     soma_test_res.fillna('.').to_csv(soma_test_out, sep='\t', index=False)
 
     shutil.rmtree(tmp_dir)

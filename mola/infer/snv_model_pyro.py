@@ -22,57 +22,57 @@ def snv_diploid_model(data, error_prior, edit_prior, event_probs):
     haps = data[:, 1]
     
     # events - [error, somatic, editing], mostly are errors
-    pi_event = pyro.sample(
-        'pi_event', 
+    τ_event = pyro.sample(
+        'τ_e', 
         dist.Dirichlet(torch.tensor(event_probs))
     )
     z_event = pyro.sample(
-        "z_event", 
-        dist.Categorical(pi_event)
+        "z_e", 
+        dist.Categorical(τ_event)
     )
     
     # somatic - which one is mutable haplotype
-    z_hap_prior = pyro.sample(
-        'z_hap_prior',
+    τ_hap = pyro.sample(
+        'τ_h',
         dist.Dirichlet(torch.tensor([1.0, 1.0]))
     )
     z_hap = pyro.sample(
-        'z_hap',
-        dist.Categorical(z_hap_prior)
+        'z_h',
+        dist.Categorical(τ_hap)
     )
     
     # which one is mutable base
-    z_base_prior = pyro.sample(
-        'z_base_prior',
+    τ_base = pyro.sample(
+        'τ_b',
         dist.Dirichlet(torch.tensor([1.0, 1.0]))
     )
     z_base = pyro.sample(
-        'z_base',
-        dist.Categorical(z_base_prior)
+        'z_b',
+        dist.Categorical(τ_base)
     )
     
     # error rate
-    p_err = pyro.sample(
-        'p_err',
+    ε = pyro.sample(
+        'ε',
         dist.Beta(*error_prior)
     )
     
-    # editing prior - allow editing frequencies different on two haplotypes
-    p_edit_h0 = pyro.sample(
-        'p_edit_h0',
-        #dist.Beta(*edit_prior)
+    # editing prior - allow editing frequencies being different on two haplotypes
+    μ_edit_h0 = pyro.sample(
+        'μ_edit_h0',
+        # dist.Beta(*edit_prior)
         dist.Beta(1, 1)
     )
     
-    p_edit_h1 = pyro.sample(
-        'p_edit_h1',
-        #dist.Beta(*edit_prior)
+    μ_edit_h1 = pyro.sample(
+        'μ_edit_h1',
+        # dist.Beta(*edit_prior)
         dist.Beta(1, 1)
     )
     
     # somatic - ~= mutant cell proportion
-    p_mut = pyro.sample(
-        'p_mut',
+    μ_mut = pyro.sample(
+        'μ_mut',
         dist.Beta(1, 1)
     )
     
@@ -81,10 +81,10 @@ def snv_diploid_model(data, error_prior, edit_prior, event_probs):
         z_base = z_base.float()
         
         # compute mutant probability based on category
-        p_edit_haps = torch.where(haps==0, p_edit_h0, p_edit_h1)
-        p_mismatch = torch.where(
+        p_edit_haps = torch.where(haps==0, μ_edit_h0, μ_edit_h1)
+        p_mut = torch.where(
             z_event == 1,  # somatic mutation: on one haplotype
-            hap_match * p_mut,
+            hap_match * μ_mut,
             torch.where(
                 z_event == 2,
                 p_edit_haps, # RNA editing,
@@ -92,9 +92,9 @@ def snv_diploid_model(data, error_prior, edit_prior, event_probs):
             )
         )
         
-        prob_true_ALT = p_mismatch * z_base + (1 - p_mismatch) * (1 - z_base)
-        prob_obs_alt = prob_true_ALT * (1 - p_err) + (1 - prob_true_ALT) * p_err
-    
+        Θ = p_mut * z_base + (1 - p_mut) * (1 - z_base)
+        prob_obs_alt = Θ * (1 - ε) + (1 - Θ) * ε
+
         pyro.sample(
             "obs_bases", 
             dist.Bernoulli(prob_obs_alt), 
@@ -117,8 +117,8 @@ def somatic_test_svi(data,
         pyro.clear_param_store()
         optim = ClippedAdam({"lr": lr, 
                             'betas': [0.8, 0.99]})
-        guide = AutoDelta(poutine.block(model, expose=['p_mut', 'p_err', 'p_edit_h0', 'p_edit_h1',
-                                                    'pi_event', 'z_hap_prior', 'z_base_prior']))
+        guide = AutoDelta(poutine.block(model, expose=['τ_e', 'τ_h', 'τ_b', 'ε',
+                                                    'μ_edit_h0', 'μ_edit_h1', 'μ_mut']))
         elbo = JitTraceEnum_ELBO(max_plate_nesting=2)
         svi = SVI(model, guide, optim, elbo)
 
@@ -139,12 +139,12 @@ def somatic_test_svi(data,
             # in case returns nan
             n_steps -= 50
 
-    p_mut = pyro.param("AutoDelta.p_mut").detach().numpy()
-    p_err = pyro.param("AutoDelta.p_err").detach().numpy()
-    p_edit_h0 = pyro.param("AutoDelta.p_edit_h0").detach().numpy()
-    p_edit_h1 = pyro.param("AutoDelta.p_edit_h1").detach().numpy()
-    pi_event = pyro.param("AutoDelta.pi_event").detach().numpy()
-    z_hap_prior = pyro.param("AutoDelta.z_hap_prior").detach().numpy()
-    z_base_prior = pyro.param("AutoDelta.z_base_prior").detach().numpy()
+    τ_e = pyro.param("AutoDelta.τ_e").detach().numpy()
+    τ_h = pyro.param("AutoDelta.τ_h").detach().numpy()
+    τ_b = pyro.param("AutoDelta.τ_b").detach().numpy()
+    ε = pyro.param("AutoDelta.ε").detach().numpy()
+    μ_edit_h0 = pyro.param("AutoDelta.μ_edit_h0").detach().numpy()
+    μ_edit_h1 = pyro.param("AutoDelta.μ_edit_h1").detach().numpy()
+    μ_mut = pyro.param("AutoDelta.μ_mut").detach().numpy()
     
-    return p_mut, p_err, p_edit_h0, p_edit_h1, pi_event, z_hap_prior, z_base_prior
+    return τ_e, τ_h, τ_b, ε, μ_edit_h0, μ_edit_h1, μ_mut

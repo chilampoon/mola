@@ -238,8 +238,9 @@ class FileUtils(FileIO):
         '''all files shouldn't have a header,
            the header has been printed to the final output file 
         '''
-        cmd = ['cat'] + sorted_file_list + ['>>', out]
-        subprocess.run(' '.join(cmd), shell=True)
+        if sorted_file_list:
+            cmd = ['cat'] + sorted_file_list + ['>>', out]
+            subprocess.run(' '.join(cmd), shell=True)
 
     def write_base_script(self, script, out):
         with self.write_text(out) as f:
