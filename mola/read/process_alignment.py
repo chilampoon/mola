@@ -408,3 +408,11 @@ class Read:
             else:
                 raise ValueError(f'new cigar event {event}, not parsed')
         return ref_pos
+    
+    def clean_up(self):
+        '''cleans up mismatches and haplotype assignments
+        (when demux or etc)
+        '''
+        self.mismatch = {}
+        self.hap = {}
+    

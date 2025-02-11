@@ -75,6 +75,8 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
                 continue
             
             for locus, hap_id in read_obj.hap.items():
+                if locus.replace('loc', '') not in haplo['locus'].values:
+                    continue
                 loc_hap = f'{locus}_{hap_id}'
                 
                 if base in [a1, a2]:
