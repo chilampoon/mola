@@ -263,10 +263,10 @@ class Phaser:
                     reads_kept = ~np.isnan(sub_read_table).all(axis=1)
                     sub_read_table = sub_read_table[reads_kept]
                     sub_locus_reads = locus_reads[reads_kept]
-                    reads = self.multisnp_phasing(gene, sub_locus_id, sub_read_table, sub_locus_sites, sub_locus_reads, reads)
+                    reads = self.multisnp_phasing(gene, sub_locus_id, sub_read_table, sub_locus_sites, sub_locus_reads, sites, reads)
         else:
             # phase all snps
-            reads = self.multisnp_phasing(gene, locus, read_table, locus_sites, locus_reads, reads)
+            reads = self.multisnp_phasing(gene, locus, read_table, locus_sites, locus_reads, sites, reads)
         return reads
 
     def filter_by_corr(self, sites, reads, gene, locus, locus_idx, read_table, locus_sites, locus_reads, adj_mat):
@@ -335,7 +335,7 @@ class Phaser:
                 adj_mat = adj_mat[kept_site_idx, :]
         return reads, locus_idx, read_table, locus_sites, np.array(list(locus_reads)), adj_mat
     
-    def multisnp_phasing(self, gene, locus, read_table, locus_sites, locus_reads, reads):
+    def multisnp_phasing(self, gene, locus, read_table, locus_sites, locus_reads, sites, reads):
         self.phasing_log.write(str(read_table)+'\n')
         phasing_time = 0
         while phasing_time < self.max_phasing_times:
@@ -373,8 +373,21 @@ class Phaser:
                 phasing_time += 1
         if locus_flag == 'MU':
             self.unphasables += 1
+            # pick the one with highest coverage as S (with min minor allele freq >= 0.2)
+            non_na_counts = np.sum(~np.isnan(read_table), axis=0)
+            high_cov = locus_sites[np.argmax(non_na_counts)]
+            minor_af_high_cov = self.germline_df.loc[self.germline_df['pos']==high_cov, 'minor_af'].values[0]
+            snp_type_high_cov = self.germline_df.loc[self.germline_df['pos']==high_cov, 'snp_type'].values[0]
+            high_cov_pass = minor_af_high_cov >= 0.2 and snp_type_high_cov == 'common'
+            if high_cov_pass:
+                site_obj = sites[(self.chrom, high_cov)]
+                self.process_one_snp(gene, locus, site_obj, reads)
+            
             for s in locus_sites:
-                self.germline_df.loc[self.germline_df['pos']==s, 'hap_snp'] = 'U' # unphasable
+                if s == high_cov and high_cov_pass:
+                    self.germline_df.loc[self.germline_df['pos']==s, 'hap_snp'] = 'S'
+                else:
+                    self.germline_df.loc[self.germline_df['pos']==s, 'hap_snp'] = 'U' # unphasable
 
         row_lst = [self.chrom, str(locus), gene, ','.join(map(str, locus_sites))] + hap_seq + [hap_ratio, hap_cnts, locus_flag]
         row = self.futils.list2line(row_lst)
