@@ -34,7 +34,7 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
     # sites to avoid to test
     phasable_sites = haplo[haplo['locus_flag'] == 'MP'][['chr','pos']]
     germline_sites = [f'{c}:{pp}' for c, p in zip(phasable_sites['chr'], phasable_sites['pos']) for pp in p.split(',')]
-    # haps to avoid
+    # haps to avoid (not common snp single locus)
     hap_avoid = haplo[haplo['locus_flag'] == 'S'][['pos', 'locus']]
     hap_avoid_real = [p for p in hap_avoid['pos'].values if posterior.loc[posterior['pos']==str(p), 'snp_type'].values[0] != 'common']
     hap_avoid = hap_avoid[hap_avoid['pos'].isin(hap_avoid_real)]
@@ -91,7 +91,7 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
         
         # test for somatic mutations
         for locus, haplo_cnts in site_hap_cnts.items():
-            if locus.replace('loc', '') in hap_avoid_loci:
+            if locus.replace('loc', '') in hap_avoid_loci or locus.replace('loc', '') not in haplo['locus'].values:
                 continue
             
             cnt_df = pd.DataFrame(haplo_cnts)
@@ -126,11 +126,8 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
             cnt_df['gene'] = row['gene']
             cnt_df['locus'] = locus
             hap_cnt.append(cnt_df)
-            if locus.replace('loc', '') not in haplo['locus'].values:
-                locus_flag = '.'
-            else:
-                locus_flag = haplo.loc[haplo['locus'] == locus.replace('loc', ''), 'locus_flag'].values[0]
             
+            locus_flag = haplo.loc[haplo['locus'] == locus.replace('loc', ''), 'locus_flag'].values[0]
             res_row = [row['snv'], row['gene'], cnt_total, locus, locus_flag, 
                         row['region'], row['snp_type'], row['category'], 
                         prediction, soma_prob, τ_e, τ_h, τ_b, μ_mut, μ_edit, ε]

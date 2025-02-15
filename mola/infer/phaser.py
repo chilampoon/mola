@@ -10,7 +10,6 @@ from mola.parse.file_utils import FileUtils
 import warnings
 warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
 
-# 2023. updated in 2024.
 
 futils = FileUtils()
 

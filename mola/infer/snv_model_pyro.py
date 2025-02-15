@@ -8,7 +8,6 @@ from pyro.params import param_store
 from pyro.infer.autoguide.guides import AutoDelta
 from pyro.optim import ClippedAdam
 
-# Jan 2025
 
 @config_enumerate
 def snv_diploid_model(data, error_prior, edit_prior, event_probs):

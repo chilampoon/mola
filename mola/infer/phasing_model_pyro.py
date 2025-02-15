@@ -11,7 +11,6 @@ from pyro.infer.autoguide.guides import AutoDelta
 from pyro.optim import ClippedAdam
 import numpy as np
 
-# 2022. updated in 2023.
 
 @config_enumerate   
 def phasing_model(read_table, n_haplos, n_bases):
