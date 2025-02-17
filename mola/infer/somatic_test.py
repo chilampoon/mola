@@ -41,6 +41,7 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
     hap_avoid_loci = hap_avoid['locus'].to_list()
     logging.info(f'{len(hap_avoid_loci)} seemed-not-good loci to skip...')
     
+    germline_tested = [] 
     for idx, row in posterior.iterrows():
         if row['snp_type'] == 'common':
             continue
@@ -55,13 +56,14 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
         # process prior info
         error_params, edit_prior = bb_params['error'], bb_params['edit']
         error_prior = error_params[site_obj.mismatch]
-        if site_obj.mismatch not in EDITS:
-            # edit_error_ratio = 1e-5
-            edit_prior = [1, 1]
-            event_probs = [(1-mut_prop), mut_prop]
-        else:
-            # edit_error_ratio = get_edit_error_ratio(posterior)
-            event_probs = [(1-mut_prop)/2, mut_prop, (1-mut_prop)/2]
+        event_probs = [(1-mut_prop)/2, mut_prop, (1-mut_prop)/2]
+        # if site_obj.mismatch not in EDITS:
+        #     edit_error_ratio = 1e-5
+        #     edit_prior = [1, 1]
+        #     event_probs = [(1-mut_prop), mut_prop]
+        # else:
+        #     edit_error_ratio = get_edit_error_ratio(posterior)
+        #     event_probs = [(1-mut_prop)/2, mut_prop, (1-mut_prop)/2]
         # edit_prop = edit_error_ratio * (1-mut_prop)
         # event_probs = [1 - mut_prop - edit_prop, mut_prop, edit_prop]
         
@@ -102,7 +104,12 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
             elif cnt_df.shape[1] < 2:
                 continue
             
-            if not check_table_cnts(cnt_df):
+            if is_germline_tab(cnt_df):
+                # save SNV to clean up record if any
+                germline_tested.append(row['snv'])
+                break
+            
+            if not has_good_coverage(cnt_df):
                 continue
             
             # run somatic test
@@ -132,13 +139,15 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
                         row['region'], row['snp_type'], row['category'], 
                         prediction, soma_prob, τ_e, τ_h, τ_b, μ_mut, μ_edit, ε]
             soma_test_res.append(res_row)
-            
+    
     hap_cnt_out = os.path.join(out_dir, f'{chrom}_hap_cnt.tsv')
     if hap_cnt:
         hap_cnt = pd.concat(hap_cnt, axis=0)
         hap_cnt.index.name = 'allele'
+        hap_cnt = hap_cnt[~hap_cnt['snv'].isin(germline_tested)] # kick out germlines
         hap_cnt.to_csv(hap_cnt_out, sep='\t', index=True, header=False)
     soma_test_res = pd.DataFrame(soma_test_res)
+    soma_test_res = soma_test_res[~soma_test_res.iloc[:, 0].isin(germline_tested)] # kick out germlines
     return soma_test_res, pd.DataFrame(stats)
 
 def get_edit_error_ratio(posterior):
@@ -209,7 +218,7 @@ def simple_stats(cnt_df):
     
     return maf, major_allele_maf, major_allele_sum, minor_hap_maf, minor_hap_sum
 
-def check_table_cnts(cnt_df):
+def is_germline_tab(cnt_df):
     '''
     if it's germline variant, counts would be like
             h1  |  h2
@@ -217,23 +226,28 @@ def check_table_cnts(cnt_df):
         a2  0   |  100
     so pass them
     '''
-    coverage_thres_sum = 20
     coverage_thres_minor = 5
-    minor_thres = 0.03 # 3% of the minor allele
-    # compute column sums
     col_sums = cnt_df.sum(axis=0)
-    row_sums = cnt_df.sum(axis=1)
-    row_minor = cnt_df.loc[row_sums.idxmin()]
-    # check if any column sum is less than 10
-    good_coverage = False if (col_sums < coverage_thres_sum).any() or (row_minor < coverage_thres_minor).all() else True
+    minor_thres = 0.03 # 3% of the minor allele
     
     # check if the diagonal elements of the df are all zeros
     row_mins = cnt_df.min(axis=1)
     min_indices = cnt_df.idxmin(axis=1)
     min_arr = np.array([max(i, coverage_thres_minor) for i in col_sums * minor_thres])
     is_germline = (row_mins < min_arr).all() and min_indices.nunique() > 1
-    test_it = True if good_coverage and not is_germline else False
-    return test_it
+    return is_germline
+
+def has_good_coverage(cnt_df):
+    coverage_thres_sum = 20
+    coverage_thres_minor = 5
+
+    # compute column sums
+    col_sums = cnt_df.sum(axis=0)
+    row_sums = cnt_df.sum(axis=1)
+    row_minor = cnt_df.loc[row_sums.idxmin()]
+    # check if any column sum is less than 10
+    good_coverage = False if (col_sums < coverage_thres_sum).any() or (row_minor < coverage_thres_minor).all() else True
+    return good_coverage
 
 def parse_svi_out(params):
     preds = ['error', 'somatic', 'edit']
@@ -251,6 +265,17 @@ def parse_svi_out(params):
     μ_mut = μ_mut.item()
     return prediction, soma_prob, τ_e, τ_h, τ_b, μ_mut, μ_edit, ε
 
+def filter_somatic(soma_test_res):
+    '''
+    for each SNV, all of its prediction(s) need to be somatic to call it a somatic mutation
+    otherwise removes the somatic prediction row
+    '''
+    snv_all_somatic = soma_test_res.groupby('snv')['prediction'].transform(
+        lambda x: (x == 'somatic').all()
+    )
+    filtered_df = soma_test_res[(snv_all_somatic) | (soma_test_res['prediction'] != 'somatic')]
+    return filtered_df.reset_index(drop=True)
+    
 def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, bb_params_path,
             mut_prop, n_haplos, learning_rate, num_steps, out_dir):
     logging.info(f'testing somatic mutations...')
@@ -303,6 +328,7 @@ def soma_test(reads_dir, sites_dir, haplo_path, posterior_path, bb_params_path,
     soma_test_res.columns = ['snv', 'gene', 'coverage', 'locus', 'locus_flag', 'region', 'snp_type', 
                             'category', 'prediction', 'soma_prob', 'event_probs', 'hap_preference', 
                             'base_preference', 'mut_frq', 'edit_frqs', 'error_frq']
+    soma_test_res = filter_somatic(soma_test_res)
     soma_test_res.fillna('.').to_csv(soma_test_out, sep='\t', index=False)
 
     shutil.rmtree(tmp_dir)
