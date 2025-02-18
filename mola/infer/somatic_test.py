@@ -36,14 +36,15 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
     germline_sites = [f'{c}:{pp}' for c, p in zip(phasable_sites['chr'], phasable_sites['pos']) for pp in p.split(',')]
     # haps to avoid (not common snp single locus)
     hap_avoid = haplo[haplo['locus_flag'] == 'S'][['pos', 'locus']]
-    hap_avoid_real = [p for p in hap_avoid['pos'].values if posterior.loc[posterior['pos']==str(p), 'snp_type'].values[0] != 'common']
+    hap_avoid_real = [p for p in hap_avoid['pos'].values if posterior.loc[posterior['pos']==str(p), 'snp_type'].values[0] != 'common' \
+                    or posterior.loc[posterior['pos'] == str(p), 'minor_af'].astype(float).values[0] < 0.35]
     hap_avoid = hap_avoid[hap_avoid['pos'].isin(hap_avoid_real)]
     hap_avoid_loci = hap_avoid['locus'].to_list()
     logging.info(f'{len(hap_avoid_loci)} seemed-not-good loci to skip...')
     
     germline_tested = [] 
     for idx, row in posterior.iterrows():
-        if row['snp_type'] == 'common':
+        if filter_post_row(row):
             continue
         
         s = int(row['pos'])
@@ -57,15 +58,6 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
         error_params, edit_prior = bb_params['error'], bb_params['edit']
         error_prior = error_params[site_obj.mismatch]
         event_probs = [(1-mut_prop)/2, mut_prop, (1-mut_prop)/2]
-        # if site_obj.mismatch not in EDITS:
-        #     edit_error_ratio = 1e-5
-        #     edit_prior = [1, 1]
-        #     event_probs = [(1-mut_prop), mut_prop]
-        # else:
-        #     edit_error_ratio = get_edit_error_ratio(posterior)
-        #     event_probs = [(1-mut_prop)/2, mut_prop, (1-mut_prop)/2]
-        # edit_prop = edit_error_ratio * (1-mut_prop)
-        # event_probs = [1 - mut_prop - edit_prop, mut_prop, edit_prop]
         
         # get alleles counts on each haplotype
         site_hap_cnts = defaultdict(lambda: defaultdict(lambda:{a1:0, a2:0}))
@@ -108,9 +100,10 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
                 # save SNV to clean up record if any
                 germline_tested.append(row['snv'])
                 break
-            
             if not has_good_coverage(cnt_df):
                 continue
+            
+            event_probs = update_probs(event_probs, cnt_df)
             
             # run somatic test
             data = torch.tensor(reads_with_site[locus])
@@ -147,17 +140,24 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
         hap_cnt = hap_cnt[~hap_cnt['snv'].isin(germline_tested)] # kick out germlines
         hap_cnt.to_csv(hap_cnt_out, sep='\t', index=True, header=False)
     soma_test_res = pd.DataFrame(soma_test_res)
-    soma_test_res = soma_test_res[~soma_test_res.iloc[:, 0].isin(germline_tested)] # kick out germlines
+    if not soma_test_res.empty:
+        soma_test_res = soma_test_res[~soma_test_res.iloc[:, 0].isin(germline_tested)] # kick out germlines
     return soma_test_res, pd.DataFrame(stats)
 
-def get_edit_error_ratio(posterior):
+def update_probs(event_probs, cnt_df):
     '''
-    for edit categories, calculate the ratio of error to edit from previous estimations
+    if maf on both haplotypes are high, its more like an edit
+    reduce the mutation probability
+    (or it's heterozygous mutation??)
     '''
-    edits = posterior[posterior['mismatch'].isin(EDITS)]
-    cnts = edits['category'].value_counts()
-    edit_error_ratio = cnts['edit'] / (cnts['error'] + cnts['edit'])
-    return float(edit_error_ratio)
+    maf_thres = 0.1
+    col_sums = cnt_df.sum(axis=0)
+    row_sums = cnt_df.sum(axis=1)
+    row_minor = cnt_df.loc[row_sums.idxmin()]
+    row_minor_pert = row_minor / col_sums
+    if (row_minor_pert >= maf_thres).all():
+        event_probs[1] /= 10
+    return event_probs
 
 def digest_betabinom_params(bb_params):
     '''
@@ -201,6 +201,19 @@ def digest_betabinom_params(bb_params):
     edit_params = (best_alpha, best_beta)
     return {'error': error_params, 'edit':edit_params}
 
+def filter_post_row(posterior_row):
+    '''
+    filter out common snp and mismatch with > 2 alleles 
+    '''
+    if posterior_row['snp_type'] == 'common':
+        return True # T -> throw away
+    bases = posterior_row[['A', 'C', 'G', 'T', 'N']].to_numpy(dtype=int)
+    base_pert = bases / bases.sum()
+    base_pert = np.sort(base_pert[base_pert > 0])[::-1]
+    # if the third highest allele frequency is greater than 0.08, remove
+    if len(base_pert) > 2 and base_pert[2] >= 0.08:
+        return True
+
 def simple_stats(cnt_df):
     # minor haplotype
     minor_hap = cnt_df.sum(axis=0).idxmin()
@@ -228,24 +241,23 @@ def is_germline_tab(cnt_df):
     '''
     coverage_thres_minor = 5
     col_sums = cnt_df.sum(axis=0)
-    minor_thres = 0.03 # 3% of the minor allele
+    minor_thres = 0.03 # at most 3% minor allele frequency
     
     # check if the diagonal elements of the df are all zeros
-    row_mins = cnt_df.min(axis=1)
-    min_indices = cnt_df.idxmin(axis=1)
+    col_mins = cnt_df.min(axis=0)
+    min_indices = cnt_df.idxmin(axis=0)
     min_arr = np.array([max(i, coverage_thres_minor) for i in col_sums * minor_thres])
-    is_germline = (row_mins < min_arr).all() and min_indices.nunique() > 1
+    is_germline = (col_mins < min_arr).all() and min_indices.nunique() > 1
     return is_germline
 
 def has_good_coverage(cnt_df):
-    coverage_thres_sum = 20
+    coverage_thres_sum = 30
     coverage_thres_minor = 5
 
     # compute column sums
     col_sums = cnt_df.sum(axis=0)
     row_sums = cnt_df.sum(axis=1)
     row_minor = cnt_df.loc[row_sums.idxmin()]
-    # check if any column sum is less than 10
     good_coverage = False if (col_sums < coverage_thres_sum).any() or (row_minor < coverage_thres_minor).all() else True
     return good_coverage
 
