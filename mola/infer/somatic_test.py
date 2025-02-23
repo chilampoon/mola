@@ -37,7 +37,7 @@ def process_chromosome(chrom, reads, sites, haplo, posterior, mut_prop, bb_param
     # haps to avoid (not common snp single locus)
     hap_avoid = haplo[haplo['locus_flag'] == 'S'][['pos', 'locus']]
     hap_avoid_real = [p for p in hap_avoid['pos'].values if posterior.loc[posterior['pos']==str(p), 'snp_type'].values[0] != 'common' \
-                    or posterior.loc[posterior['pos'] == str(p), 'minor_af'].astype(float).values[0] < 0.35]
+                    or posterior.loc[posterior['pos'] == str(p), 'minor_af'].astype(float).values[0] < 0.1]
     hap_avoid = hap_avoid[hap_avoid['pos'].isin(hap_avoid_real)]
     hap_avoid_loci = hap_avoid['locus'].to_list()
     logging.info(f'{len(hap_avoid_loci)} seemed-not-good loci to skip...')
@@ -251,7 +251,7 @@ def is_germline_tab(cnt_df):
     return is_germline
 
 def has_good_coverage(cnt_df):
-    coverage_thres_sum = 30
+    coverage_thres_sum = 20
     coverage_thres_minor = 5
 
     # compute column sums
