@@ -1,0 +1,28 @@
+---
+title: mola parse count
+description: Export bulk or single-cell count tables from annotated read objects.
+---
+
+## Synopsis
+
+```bash
+mola parse count --obj_dir PATH [OPTIONS]
+```
+
+Generate count tables or matrices from annotated read objects.
+
+## Key options
+
+- `-d`, `--obj_dir`: object directory from `mola read annotate`, required
+- `--assay`: `sc` or `bulk`
+- `--paired_end`
+- `--splice`
+- `--mode`
+- `--concat_prefixes`
+- `--gene_id`
+- `--barcode_list`
+
+## Notes
+
+- `--splice` produces `spliced_counts.tsv.gz` and `unspliced_counts.tsv.gz`.
+- `--mode` can combine feature classes such as `gene`, `Alu`, `intron`, `oth`, `intergenic`, and `an`.

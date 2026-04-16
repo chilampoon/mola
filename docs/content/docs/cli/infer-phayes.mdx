@@ -1,0 +1,29 @@
+---
+title: mola infer phayes
+description: Phase putative germline SNPs across long reads.
+---
+
+## Synopsis
+
+```bash
+mola infer phayes --obj_dir PATH --posterior_probs PATH [OPTIONS]
+```
+
+Phase putative germline SNPs and assign reads to haplotypes.
+
+## Key options
+
+- `-d`, `--obj_dir`: object directory with `reads/` and `sites/`, required
+- `--posterior_probs`: posterior table, required
+- `-k`, `--num_haplotypes`
+- `--stranded`
+- `--edit_pair`
+- `--num_steps`
+- `--learning_rate`
+- `--max_phasing_times`
+
+## Outputs
+
+- `phasing_out/haplo.tsv`
+- `phasing_out/germlines.tsv.gz`
+- `phasing_out/phasing.log`

@@ -1,0 +1,38 @@
+---
+title: mola read annotate
+description: Build per-read objects and annotate reads against genes, repeats, and splice structure.
+---
+
+## Synopsis
+
+```bash
+mola read annotate --bam PATH --repeat_bed PATH --gff3 PATH [OPTIONS]
+```
+
+Process alignments into per-read objects and annotate them.
+
+## Important options
+
+- `--bulk`
+- `--paired_end`
+- `--read_assignments`
+- `--min_overlap`
+- `--min_exon_on_read`
+- `--min_repeat_on_read`
+- `--min_intron_on_read`
+- `--min_intron_unspliced`
+- `--write_read_info`
+- `--alu_merge_dist`
+- `--tmp_dir`
+
+## Outputs
+
+- `objects/reads/<chrom>_reads.pkl.gz`
+- optional `tables/read_info.tsv.gz`
+- a reusable `*_beds` workspace under the output directory
+
+## Notes
+
+- The first run creates an annotation workspace under `<out_dir>/*_beds`.
+- That workspace is required again by `mola mut map`.
+- If `--read_assignments` is provided, the command follows the long-read assignment path.

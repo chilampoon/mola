@@ -1,0 +1,29 @@
+---
+title: mola mut map
+description: Map mismatch sites from a VCF back onto annotated read objects.
+---
+
+## Synopsis
+
+```bash
+mola mut map --bam PATH --pileup_vcf PATH --tmp_dir PATH [OPTIONS]
+```
+
+Map mismatch sites to individual reads.
+
+## Key options
+
+- `-b`, `--bam`: input BAM, required
+- `--pileup_vcf`: candidate mismatch VCF, required
+- `--ref_vcf`: optional dbSNP/reference VCF
+- `-r`, `--reads_dir`: read object directory from stage 1
+- `--stranded`
+- `--paired_end`
+- `--min_depth`
+- `--min_minor_allele`
+- `--tmp_dir`: annotation workspace from stage 1, required
+
+## Notes
+
+- In practice, `--reads_dir` is also required, even though the CLI definition does not mark it as required.
+- The command writes both object files and aggregated site tables.

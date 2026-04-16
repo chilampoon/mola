@@ -1,0 +1,56 @@
+---
+title: Long-read workflow
+description: Recommended command sequence for long-read runs that need posterior modeling and phasing.
+---
+
+Use the long-read path when:
+
+- you have long cDNA or mRNA reads
+- you can provide confident read-to-gene assignments
+- you want to classify mismatch behavior and optionally phase loci across reads
+
+## Recommended sequence
+
+1. Run `mola read annotate` with `--read_assignments`.
+2. Run `mola mut map`.
+3. Run `mola infer posteriors`.
+4. Optionally run `mola infer phayes`.
+5. Optionally run `mola infer soma`.
+
+## Example
+
+```bash
+mola read -o long_run annotate \
+  -b long_reads.bam \
+  --repeat_bed repeats.bed.gz \
+  --gff3 genes.gtf.gz \
+  --read_assignments isoquant.read_assignments.tsv.gz \
+  --write_read_info
+
+tmp_dir=$(find long_run -maxdepth 1 -type d -name '*_beds' | head -n 1)
+
+mola mut map \
+  -b long_reads.bam \
+  --pileup_vcf sites.vcf.gz \
+  --ref_vcf dbsnp.vcf.gz \
+  --reads_dir long_run/objects/reads \
+  --tmp_dir "$tmp_dir" \
+  -o long_run
+
+mola infer posteriors \
+  -s long_run/tables/sites_stranded.tsv.gz \
+  -u long_run/tables/sites_unstranded.tsv.gz \
+  --tech pacbio \
+  -o long_run
+
+mola infer phayes \
+  -d long_run/objects \
+  --posterior_probs long_run/betabinom_out/sites_posterior_probs.tsv.gz \
+  -o long_run
+```
+
+## Long-read-specific behavior
+
+- `--read_assignments` changes how gene, transcript, and strand are assigned.
+- The phasing stage operates on `objects/reads` and `objects/sites`, not just flat tables.
+- `mola infer soma` depends on both the phasing output and the parameter JSON from posterior modeling.

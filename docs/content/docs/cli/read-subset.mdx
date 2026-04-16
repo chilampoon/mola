@@ -1,0 +1,22 @@
+---
+title: mola read subset
+description: Extract a subset of alignments from a BAM using a read id list.
+---
+
+## Synopsis
+
+```bash
+mola read subset --bam PATH [--read_id_file PATH]
+```
+
+Extract alignments by read id.
+
+## Key options
+
+- `-b`, `--bam`: input BAM, required
+- `--read_id_file`: text file containing read ids
+
+## Notes
+
+- The output BAM is sorted and indexed after filtering.
+- Common `mola read` options are parsed before the subcommand executes, even though they are not central to subset behavior.

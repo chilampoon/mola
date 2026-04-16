@@ -1,0 +1,17 @@
+{
+  "title": "Commands",
+  "defaultOpen": false,
+  "pages": [
+    "index",
+    "read-demux",
+    "read-subset",
+    "read-trim",
+    "read-annotate",
+    "mut-map",
+    "mut-write",
+    "infer-posteriors",
+    "infer-phayes",
+    "infer-soma",
+    "parse-count"
+  ]
+}

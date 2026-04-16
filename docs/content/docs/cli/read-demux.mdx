@@ -1,0 +1,22 @@
+---
+title: mola read demux
+description: Demultiplex a BAM into separate files using an alignment tag.
+---
+
+## Synopsis
+
+```bash
+mola read demux --bam PATH [--tag_demux TEXT]
+```
+
+Demultiplex a BAM by tag. The default split tag is `CB`.
+
+## Key options
+
+- `-b`, `--bam`: input BAM, required
+- `--tag_demux`: tag to split on, default `CB`
+
+## Notes
+
+- Common `mola read` options such as `--min_read_len`, `--min_mapq`, `--secondary`, and `-o/--out_dir` apply here.
+- The implementation writes one BAM per observed tag value.

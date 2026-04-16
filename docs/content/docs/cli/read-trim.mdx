@@ -1,0 +1,24 @@
+---
+title: mola read trim
+description: Trim adapter-like sequence from BAM records and write trimmed FASTQ.
+---
+
+## Synopsis
+
+```bash
+mola read trim --bam PATH [--max_edit_dist INTEGER] [--lib TEXT] [--short]
+```
+
+Trim primer, adapter, polyA/polyT, and TSO sequence from reads and write a trimmed FASTQ.
+
+## Key options
+
+- `-b`, `--bam`: input BAM, required
+- `--max_edit_dist`: fuzzy-matching threshold, default `2`
+- `--lib`: library definition, default `10x_3prime_v3`
+- `--short`: use the short-read trimming path
+
+## Notes
+
+- The current library-definition table only includes `10x_3prime_v3`.
+- The long-read and short-read trim code paths are implemented separately.

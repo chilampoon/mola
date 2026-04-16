@@ -1,0 +1,46 @@
+---
+title: Short-read workflow
+description: Recommended command sequence for bulk and single-cell short-read data.
+---
+
+Use the short-read path when:
+
+- reads do not have external long-read read-assignment tables
+- you mainly need feature-aware mismatch summaries
+- optional phasing is not the main goal
+
+## Recommended sequence
+
+1. Run `mola read annotate`.
+2. Run `mola mut map`.
+3. Export site summaries with `mola mut write`.
+4. Optionally export feature counts with `mola parse count`.
+
+## Example
+
+```bash
+mola read -o short_run annotate \
+  --bulk \
+  --paired_end \
+  -b reads.bam \
+  --repeat_bed repeats.bed.gz \
+  --gff3 genes.gtf.gz \
+  --write_read_info
+
+tmp_dir=$(find short_run -maxdepth 1 -type d -name '*_beds' | head -n 1)
+
+mola mut map \
+  -b reads.bam \
+  --pileup_vcf sites.vcf.gz \
+  --ref_vcf dbsnp.vcf.gz \
+  --reads_dir short_run/objects/reads \
+  --tmp_dir "$tmp_dir" \
+  --paired_end \
+  -o short_run
+```
+
+## Notes for short-read data
+
+- Without `--read_assignments`, `mola` uses alignment tags and BED intersections to recover gene context.
+- Single-cell short-read data can later be summarized at pseudobulk or cell level with `mola mut write`.
+- `mola parse count --assay sc` uses the annotated read objects and does not require the mismatch-mapping stage.

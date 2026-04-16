@@ -1,0 +1,27 @@
+---
+title: mola infer soma
+description: Test phased candidate sites for somatic-like behavior.
+---
+
+## Synopsis
+
+```bash
+mola infer soma --obj_dir PATH --haplo PATH --post_probs PATH --bb_params PATH [OPTIONS]
+```
+
+Run the somatic-style test after posterior classification and phasing.
+
+## Key options
+
+- `-d`, `--obj_dir`: object directory with `reads/` and `sites/`, required
+- `--haplo`: `haplo.tsv` from `mola infer phayes`, required
+- `--post_probs`: posterior table, required
+- `--bb_params`: beta-binomial parameter JSON, required
+- `--mut_prop`
+- `--n_haplos`
+- `--learning_rate`
+- `--num_steps`
+
+## Notes
+
+- `--bb_params` should point at `betabinom_params.json`, not only the human-readable `.txt` summary.

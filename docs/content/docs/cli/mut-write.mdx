@@ -1,0 +1,25 @@
+---
+title: mola mut write
+description: Export mismatch site summaries from the site object directory.
+---
+
+## Synopsis
+
+```bash
+mola mut write --site_dir PATH [OPTIONS]
+```
+
+Write mismatch-site tables or matrices from `objects/sites`.
+
+## Key options
+
+- `--site_dir`: site object directory, required
+- `--stranded`
+- `--mode`: `bulk`, `pseudobulk`, or `cell`
+- `--celltype_map`
+- `--matrix`
+
+## Notes
+
+- `--mode pseudobulk` and `--mode cell` require `--celltype_map`.
+- `--matrix` writes cell-by-site reference and alternate count matrices instead of a long table.

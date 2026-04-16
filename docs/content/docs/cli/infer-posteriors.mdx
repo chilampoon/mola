@@ -1,0 +1,32 @@
+---
+title: mola infer posteriors
+description: Fit beta-binomial mixture models and classify candidate sites.
+---
+
+## Synopsis
+
+```bash
+mola infer posteriors --sites_stranded PATH [OPTIONS]
+```
+
+Fit beta-binomial mixture models and compute posterior probabilities of germline, error, or editing categories.
+
+## Key options
+
+- `-s`, `--sites_stranded`: stranded site table, required
+- `-u`, `--sites_unstranded`: optional unstranded site table
+- `--tech`: `pacbio`, `ont`, or `illumina`
+- `--num_nonsnp_comps`
+- `--edit_pair`
+- `--min_coverage`
+- `--min_minor_cnt`
+- `--min_minor_af`
+- `--learning_rate`
+- `--num_steps`
+
+## Outputs
+
+- `betabinom_out/sites_posterior_probs.tsv.gz`
+- `betabinom_params.txt`
+- `betabinom_params.json`
+- per-category plots

@@ -1,0 +1,31 @@
+---
+title: Installation
+description: Install mola from source and set up the Fumadocs app locally.
+---
+
+## Install `mola`
+
+Install from source:
+
+```bash
+git clone https://github.com/chilampoon/mola.git
+cd mola
+pip install -e .
+```
+
+## External tools
+
+The annotation and mismatch-mapping stages shell out to external tools:
+
+- `bedtools`
+- `gawk` on macOS for the annotation preprocessing script
+- `gawk` or `gcut` on macOS for mismatch mapping
+
+If `bedtools` is missing, both `mola read annotate` and `mola mut map` exit early.
+
+## Runtime assumptions
+
+- BAM input must be usable with `pysam.AlignmentFile.fetch(...)` by chromosome.
+- `--ref_vcf` must be bgzipped and tabix-indexed.
+- `--pileup_vcf` is expected to be position-sorted.
+- The long-read annotation path expects an IsoQuant-style read assignment table when `--read_assignments` is used.
