@@ -6,6 +6,19 @@ from mola.parse.file_utils import *
 
 futils = FileUtils()
 
+CIGAR_OP_NAMES = {
+    0: 'M',
+    1: 'I',
+    2: 'D',
+    3: 'N',
+    4: 'S',
+    5: 'H',
+    6: 'P',
+    7: '=',
+    8: 'X',
+}
+
+
 def aln2Read(aln, primary, min_len, min_mapq):
     # NOTE pos is 1-base
     if kickout_aln(aln, primary, min_len, min_mapq):
@@ -291,27 +304,29 @@ class Read:
         start = end = self.start
         blocks = [] # [(st, ed)]
         for event in cigartuples:
-            if event[0] in [1, 4, 5]:
-                # insertion, soft & hard clippings
+            cigar_op, length = event
+            if cigar_op in [1, 4, 5, 6]:
+                # insertion, soft/hard clipping, and padding
                 continue
-            elif event[0] == 0:
-                # mapped
-                end += event[1]
-            elif event[0] == 2:
+            elif cigar_op in [0, 7, 8]:
+                # mapped/aligned bases; PacBio uses =/X instead of M
+                end += length
+            elif cigar_op == 2:
                 # deletion from reference
-                if event[1] > max_del_len:
+                if length > max_del_len:
                     blocks.append((start, end))
-                    start = end + event[1]
+                    start = end + length
                     end = start
                 else:
-                    end += event[1]
-            elif event[0] == 3:
+                    end += length
+            elif cigar_op == 3:
                 # intron
                 blocks.append((start, end))
-                start = end + event[1]
+                start = end + length
                 end = start
             else:
-                raise ValueError('Found unparsed cigar string: ' + str(event[0]))
+                cigar_op_name = CIGAR_OP_NAMES.get(cigar_op, 'unknown')
+                raise ValueError(f'Found unparsed cigar string: {cigar_op} ({cigar_op_name})')
         blocks.append((start, end))
         return blocks
 
