@@ -9,13 +9,43 @@ Use the long-read path when:
 - you can provide confident read-to-gene assignments
 - you want to classify mismatch behavior and optionally phase loci across reads
 
-## Recommended sequence
+## Recommended workflow
 
-1. Run `mola read annotate` with `--read_assignments`.
-2. Run `mola mut map`.
-3. Run `mola infer posteriors`.
-4. Optionally run `mola infer phayes`.
-5. Optionally run `mola infer soma`.
+### 1. Get read to gene assignments with isoquant
+```bash
+# install isoquant 
+pip install isoquant
+
+# run isoquant for example with a single cell pacbio bam file
+isoquant.py -d pacbio \
+  --bam $BAM \
+  --reference $FA \
+  --genedb $GTF \
+  --complete_genedb --output ${OUT} -t 8 \
+  --read_group tag:CB \
+  --splice_correction_strategy default_pacbio
+```
+
+### 2. Get pileup VCF with cellsnp-lite
+```bash
+# install cellsnp-lite
+conda install -c bioconda cellsnp-lite
+
+# run cellsnp-lite mode 1b with a pacbio bam file
+cellsnp-lite -s $BAM \
+  -O $OUT \
+  -p 8 \
+  --minMAF 0.05 \
+  --minCOUNT 10 \
+  --cellTAG None \
+  --UMItag None \
+  --chrom chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22,chrX,chrY,chrM
+```
+
+### 3. Annotate reads
+
+
+
 
 ## Example
 

@@ -10,6 +10,13 @@
   color-scheme: dark;
 }
 
+@media (min-width: 768px) {
+  /* Fumadocs uses this variable for both pinned and hover-revealed sidebar states. */
+  [data-sidebar-placeholder] {
+    --fd-sidebar-width: 220px;
+  }
+}
+
 body {
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
 }
