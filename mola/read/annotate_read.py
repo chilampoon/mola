@@ -247,23 +247,22 @@ def iterate_bam(bam, bulk, primary, min_len, min_mapq, read_info,
     '''
     reads_chrom = dict()
     uniq_molecules = dict() # unique cell barcode + umi pairs
+    read_id_counts = dict()
     dup_cnt = 0
     with futils.write_text(bed_out) as fout:
         for aln in bam:
             read = aln2Read(aln, primary, min_len, min_mapq)
             if not read:
                 continue
-            
-            if bulk:
-                # some paired end reads don't have paired ids
-                if aln.query_name in reads_chrom:
-                    read.id = f'{read.id}/2'
-            else:
-                if read_info is not None and read.id in read_info:
+            original_read_id = read.id
+            read.id = make_unique_read_id(original_read_id, read_id_counts)
+
+            if not bulk:
+                if read_info is not None and original_read_id in read_info:
                     # filter out reads mapped to different chromosomes from gene annotation & genome
-                    rinfo = read_info[read.id]
+                    rinfo = read_info[original_read_id]
                     if rinfo['c'] != read.chr:
-                        logging.debug(f'{read.id} from {read.chr} but was assigned to {rinfo["c"]}')
+                        logging.debug(f'{original_read_id} from {read.chr} but was assigned to {rinfo["c"]}')
                         continue
                 action = dup_mole(read, uniq_molecules, reads_chrom, max_dist=1)
                 if action in ['dump', 'replace']:
@@ -300,9 +299,9 @@ def iterate_bam(bam, bulk, primary, min_len, min_mapq, read_info,
                         gname = get_tags(aln, 'GN')
                         gname = gname if gname is not None else '.'
                     read.gene['name'] = ';'.join(np.unique(gname.split(';'))) # prevent repeated names
-            elif read.id in read_info:
+            elif original_read_id in read_info:
                 # long reads have confident gene assignments to reads
-                rinfo = read_info[read.id]
+                rinfo = read_info[original_read_id]
                 gene_chrom, strand, gene_id, tx_id = rinfo['c'], rinfo['s'], rinfo['g'], rinfo['t']
                 gname, gstrand = geneid_to_name[gene_id].split('|')
                 read.feature = 'gene'
@@ -315,20 +314,40 @@ def iterate_bam(bam, bulk, primary, min_len, min_mapq, read_info,
             write_read_bed(read, aln, fout) # get bed file for all (short or long) reads
     return reads_chrom, dup_cnt
 
+def make_unique_read_id(read_id, read_id_counts):
+    read_id_counts[read_id] = read_id_counts.get(read_id, 0) + 1
+    if read_id_counts[read_id] == 1:
+        return read_id
+    return f'{read_id}/{read_id_counts[read_id]}'
+
 def dup_mole(read, uniq_molecules, reads_chrom, max_dist):
     # is_duplicate flag seems useless, dedup here. Also, pick the LONGEST read!
     action = 'new'
     cb, umi, pos, read_id, length = read.cb, read.umi, read.start, read.id, read.len
+    if cb == '.' or umi == '.':
+        return action
+
     if (cb, umi) not in uniq_molecules:
         uniq_molecules[(cb, umi)] = {pos:read_id}
     else:
         # NOTE: what if reads are paired end? this needs to record positions - TBD
-        # right now it's for single end reads still keeping the positions 
-        pos_old = list(uniq_molecules[(cb, umi)].keys())[0]
-        len_old = reads_chrom[uniq_molecules[(cb, umi)][pos_old]].len
+        # right now it's for single end reads still keeping the positions
+        molecules = uniq_molecules[(cb, umi)]
+        for molecule_pos, molecule_read_id in list(molecules.items()):
+            if molecule_read_id not in reads_chrom:
+                del molecules[molecule_pos]
+
+        nearby_positions = [molecule_pos for molecule_pos in molecules if abs(pos - molecule_pos) <= max_dist]
+        if not nearby_positions:
+            molecules[pos] = read_id
+            return action
+
+        pos_old = nearby_positions[0]
+        len_old = reads_chrom[molecules[pos_old]].len
         if length > len_old:
-            del reads_chrom[uniq_molecules[(cb, umi)][pos_old]]
-            uniq_molecules[(cb, umi)] = {pos: read_id}
+            del reads_chrom[molecules[pos_old]]
+            del molecules[pos_old]
+            molecules[pos] = read_id
             action = 'replace'
         else:
             action = 'dump'

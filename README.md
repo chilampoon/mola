@@ -29,7 +29,7 @@ pip install -e .
 
 | Application | Data modality | Publication |
 |---|---|---|
-| A-to-I editing site calling from HyperTRIBE | Bulk short-read RNA-seq | [Inherited resilience to clonal hematopoiesis by modifying stem cell RNA regulation 2026](https://doi.org/10.1126/science.adx4174) |
+| A-to-I editing site calling from HyperTRIBE | Bulk short-read RNA-seq | [Inherited resilience to clonal hematopoiesis by modifying stem cell RNA regulation (2026)](https://doi.org/10.1126/science.adx4174) |
 
 ## Documentation
 Long-form documentation lives at [docs/](https://chilampoon.github.io/mola/).
