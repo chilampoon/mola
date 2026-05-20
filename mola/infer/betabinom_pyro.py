@@ -43,6 +43,7 @@ def betabinom_mixture_model(data,
         # the first N components have fixed weights (from error distribution)
         # other components have flexible weights
         assert type(fixed_weights) is list, 'fixed_weights should be a list'
+        fixed_weights = [float(w) for w in fixed_weights]
         weight_prior_oth = 1 - sum(fixed_weights)
         n_oth_components = n_components - len(fixed_weights)
         with pyro.plate("component_weights", n_oth_components, dim=-1):
