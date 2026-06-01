@@ -6,7 +6,10 @@ from .mutation import mola_mut
 from .infer import mola_infer
 from .parse import mola_parse
 
-@click.group()
+HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}
+
+
+@click.group(context_settings=HELP_CONTEXT)
 def mola():
     """
     🌞🐟

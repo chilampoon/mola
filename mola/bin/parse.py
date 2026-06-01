@@ -7,7 +7,10 @@ logging.basicConfig(level=logging.INFO,
                     format='[%(asctime)s] %(levelname)s - %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 
-@click.group('parse')
+HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}
+
+
+@click.group('parse', context_settings=HELP_CONTEXT)
 def mola_parse():
     '''
     Parse files
@@ -15,7 +18,7 @@ def mola_parse():
     pass
 
 
-@mola_parse.command('count')
+@mola_parse.command('count', context_settings=HELP_CONTEXT)
 @click.option('-d', '--obj_dir', required=True, type=click.Path(exists=True),
               help="Object directory, output from read annotation")
 @click.option('--assay', required=True, default='sc',

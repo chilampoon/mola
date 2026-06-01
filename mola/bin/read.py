@@ -9,6 +9,9 @@ logging.basicConfig(level=logging.INFO,
                     format='[%(asctime)s] %(levelname)s - %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 
+HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}
+
+
 class Config(object):
     def __init__(self):
         self.verbose = False
@@ -16,7 +19,7 @@ class Config(object):
 pass_config = click.make_pass_decorator(Config, ensure=True)
 
 
-@click.group('read')
+@click.group('read', context_settings=HELP_CONTEXT)
 @click.option('--min_read_len', show_default=True, default=0,
               help="Minimal read length")
 @click.option('--min_mapq', show_default=True, default=20,
@@ -44,7 +47,7 @@ def mola_read(config, min_read_len, min_mapq, secondary, out_dir):
     config.out_dir = out_dir
 
 
-@mola_read.command('demux')
+@mola_read.command('demux', context_settings=HELP_CONTEXT)
 @click.option('-b', '--bam', required=True, type=click.Path(exists=True),
               help="BAM file")
 @click.option('--tag_demux', required=True, default='CB', show_default=True,
@@ -55,7 +58,7 @@ def demux(config, bam, tag_demux):
     demux_by_tag(bam, tag_demux, config.out_dir)
 
 
-@mola_read.command('subset')
+@mola_read.command('subset', context_settings=HELP_CONTEXT)
 @click.option('-b', '--bam', required=True, type=click.Path(exists=True),
               help="BAM file")
 @click.option('--read_id_file', default=None, type=click.Path(exists=True),
@@ -66,7 +69,7 @@ def subset(config, bam, read_id_file):
     subset_bam(bam, config.out_dir, read_id_file)
 
 
-@mola_read.command('trim')
+@mola_read.command('trim', context_settings=HELP_CONTEXT)
 @click.option('-b', '--bam', required=True, type=click.Path(exists=True),
               help="BAM file")
 @click.option('--max_edit_dist', default=2, show_default=True,
@@ -82,7 +85,7 @@ def trim(config, bam, max_edit_dist, lib, short):
     trim_reads(bam, out_dir, lib, max_edit_dist, short)
 
 
-@mola_read.command('annotate')
+@mola_read.command('annotate', context_settings=HELP_CONTEXT)
 @click.option('-b', '--bam', required=True, type=click.Path(exists=True),
               help="BAM file")
 @click.option('--bulk', is_flag=True, show_default=True, default=False,

@@ -11,9 +11,44 @@
 }
 
 @media (min-width: 768px) {
-  /* Fumadocs uses this variable for both pinned and hover-revealed sidebar states. */
-  [data-sidebar-placeholder] {
-    --fd-sidebar-width: 220px;
+  /* Keep the Fumadocs sidebar narrower than its default 268px desktop width. */
+  #nd-docs-layout,
+  #nd-docs-layout [data-sidebar-placeholder] {
+    --fd-sidebar-width: clamp(180px, 12vw, 220px);
+  }
+}
+
+@media (min-width: 1280px) {
+  /*
+   * Fumadocs centers the whole docs grid, which leaves a very large blank
+   * gutter before the sidebar on wide screens. Keep that gutter proportional
+   * and split the remaining space around the article content.
+   */
+  #nd-docs-layout {
+    grid-template:
+      "sidebar sidebar content-gap header toc toc"
+      "sidebar sidebar content-gap toc-popover toc toc"
+      "sidebar sidebar content-gap main toc toc" 1fr /
+      clamp(16px, 2.5vw, 56px)
+      var(--fd-sidebar-col)
+      minmax(24px, 1fr)
+      minmax(0, 900px)
+      var(--fd-toc-width)
+      minmax(24px, 1fr) !important;
+  }
+
+  #nd-docs-layout[data-sidebar-collapsed="true"] {
+    grid-template:
+      "sidebar sidebar toc-offset content-gap header right-gap toc"
+      "sidebar sidebar toc-offset content-gap toc-popover right-gap toc"
+      "sidebar sidebar toc-offset content-gap main right-gap toc" 1fr /
+      0px
+      var(--fd-sidebar-col)
+      max(0px, var(--fd-toc-width))
+      minmax(24px, 1fr)
+      minmax(0, 900px)
+      minmax(24px, 1fr)
+      var(--fd-toc-width) !important;
   }
 }
 

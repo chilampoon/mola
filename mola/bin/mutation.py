@@ -8,7 +8,10 @@ logging.basicConfig(level=logging.INFO,
                     format='[%(asctime)s] %(levelname)s - %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 
-@click.group('mut')
+HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}
+
+
+@click.group('mut', context_settings=HELP_CONTEXT)
 def mola_mut():
     '''
     Mutation detection and analysis
@@ -16,7 +19,7 @@ def mola_mut():
     pass
 
 
-@mola_mut.command('map')
+@mola_mut.command('map', context_settings=HELP_CONTEXT)
 @click.option('-b', '--bam', type=click.Path(exists=True), required=True,
               help="BAM/SAM file")
 @click.option('--pileup_vcf', type=click.Path(exists=True), required=True,
@@ -62,7 +65,7 @@ def read2mismatch(bam, pileup_vcf, ref_vcf, reads_dir, stranded, paired_end, min
     )
 
 
-@mola_mut.command('write')
+@mola_mut.command('write', context_settings=HELP_CONTEXT)
 @click.option('--site_dir', type=click.Path(exists=True), required=True,
               help="sites directory from mut map outputs")
 @click.option('--stranded', is_flag=True, show_default=True, default=False,

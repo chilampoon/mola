@@ -9,8 +9,10 @@ logging.basicConfig(level=logging.INFO,
                     format='[%(asctime)s] %(levelname)s - %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S')
 
+HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}
 
-@click.group('infer')
+
+@click.group('infer', context_settings=HELP_CONTEXT)
 def mola_infer():
     '''
     Phasing long cDNA/mRNA reads with a Bayesian graphical model
@@ -27,7 +29,7 @@ def common_options_decorator(func):
     return func
 
 
-@mola_infer.command('posteriors')
+@mola_infer.command('posteriors', context_settings=HELP_CONTEXT)
 @common_options_decorator
 @click.option('--tech', show_default=True, default='pacbio',
               help="pacbio, ont, or illumina")
@@ -69,7 +71,7 @@ def calculate_posteriors(tech, sites_stranded, sites_unstranded, num_nonsnp_comp
                             min_minor_cnt, min_minor_af)
 
 
-@mola_infer.command('phayes')
+@mola_infer.command('phayes', context_settings=HELP_CONTEXT)
 @click.option('-d', '--obj_dir', required=True, type=click.Path(exists=True),
               help="Object directory, output from read annotation and mutation mapping")
 @click.option('--posterior_probs', type=click.Path(exists=True), required=True, 
@@ -108,7 +110,7 @@ def phayes(**args):
     )
 
 
-@mola_infer.command('soma')
+@mola_infer.command('soma', context_settings=HELP_CONTEXT)
 @click.option('-d', '--obj_dir', required=True, type=click.Path(exists=True),
               help="Object directory, output from read annotate")
 @click.option('--haplo', required=True, type=click.Path(exists=True),
